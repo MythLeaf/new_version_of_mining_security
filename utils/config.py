@@ -11,6 +11,16 @@ from typing import Any, Dict, List, Optional
 import yaml
 from pydantic import BaseModel, Field, model_validator
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+def resolve_project_path(path: str | Path) -> Path:
+    """Resolve a config path relative to the project root."""
+    path_obj = Path(path)
+    if path_obj.is_absolute():
+        return path_obj.resolve()
+    return (PROJECT_ROOT / path_obj).resolve()
+
 
 class ProjectConfig(BaseModel):
     name: str

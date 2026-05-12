@@ -18,6 +18,7 @@ import {
   deleteShortTermMemory,
 } from "../api/client";
 import ReactECharts from "echarts-for-react";
+import "echarts-gl";
 
 const PRIO_COLORS: Record<string, string> = { P0: "#ef4444", P1: "#f97316", P2: "#3b82f6", P3: "#10b981" };
 const PRIO_BG: Record<string, string> = { P0: "rgba(239,68,68,0.15)", P1: "rgba(249,115,22,0.15)", P2: "rgba(59,130,246,0.15)", P3: "rgba(16,185,129,0.15)" };
@@ -231,34 +232,79 @@ function OverviewDashboard() {
     const st = memStats?.short_term || {};
     const lt = memStats?.long_term || {};
     const we = memStats?.warning_experiences || {};
-    const maxVal = Math.max(st.total || 1, lt.total || 1, we.total || 1, 1);
+    const dims = ["总量规模", "分类多样性", "企业覆盖", "P0紧急度", "时间跨度"];
+    const stVals = [st.total || 0, Object.keys(st.by_category || {}).length, Object.keys(st.by_enterprise || {}).length, st.by_priority?.P0 || 0, Object.keys(st.timeline || {}).length];
+    const ltVals = [lt.total || 0, Object.keys(lt.by_category || {}).length, Object.keys(lt.by_enterprise || {}).length, lt.by_priority?.P0 || 0, Object.keys(lt.timeline || {}).length];
+    const weVals = [we.total || 0, Object.keys(we.by_scenario || {}).length, 0, we.by_level?.["红"] || 0, Object.keys(we.timeline || {}).length];
+    const maxVal = Math.max(...stVals, ...ltVals, ...weVals, 1);
+    const normSt = stVals.map((v) => v / maxVal);
+    const normLt = ltVals.map((v) => v / maxVal);
+    const normWe = weVals.map((v) => v / maxVal);
+    const N = 30;
+    const buildSurface = (vals: number[], offset: number) => ({
+      type: "surface" as const,
+      wireframe: { show: false },
+      shading: "realistic" as const,
+      realisticMaterial: { roughness: 0.5, metalness: 0.1 },
+      equation: {
+        x: { min: 0, max: 1, step: 1 / N },
+        y: { min: 0, max: 1, step: 1 / N },
+        z: (x: number, y: number) => {
+          let z = 0;
+          vals.forEach((v, vi) => {
+            const cx = (vi + 0.5) / vals.length;
+            const cy = 0.5;
+            z += v * Math.exp(-((x - cx) ** 2 + (y - cy) ** 2) * 12);
+          });
+          z += offset * 0.15;
+          return Math.max(0, z);
+        },
+      },
+      itemStyle: { opacity: 0.85 },
+    });
+    const buildScatters = (vals: number[], offset: number, color: string, name: string) =>
+      vals.map((v, vi) => ({
+        type: "scatter3D" as const,
+        name: `${name}-${dims[vi]}`,
+        data: [[(vi + 0.5) / vals.length, 0.5, v + offset * 0.15]],
+        symbolSize: 10,
+        itemStyle: { color },
+        label: {
+          show: true,
+          formatter: () => `${dims[vi]}:${(v * maxVal).toFixed(0)}`,
+          color: "#e5e7eb",
+          fontSize: 10,
+          distance: 5,
+        },
+      }));
+    const series: any[] = [
+      buildSurface(normSt, 0),
+      ...buildScatters(normSt, 0, "#3b82f6", "短期记忆"),
+      buildSurface(normLt, 1),
+      ...buildScatters(normLt, 1, "#10b981", "长期记忆"),
+      buildSurface(normWe, 2),
+      ...buildScatters(normWe, 2, "#8b5cf6", "预警经验"),
+    ];
     return {
       backgroundColor: "transparent",
       tooltip: {},
       legend: { data: ["短期记忆", "长期记忆", "预警经验"], bottom: 0, textStyle: { color: "#94a3b8", fontSize: 10 } },
-      radar: {
-        center: ["50%", "45%"],
-        radius: "60%",
-        indicator: [
-          { name: "总量规模", max: maxVal },
-          { name: "分类多样性", max: 10 },
-          { name: "企业覆盖", max: Math.max(Object.keys(st.by_enterprise || {}).length || 1, Object.keys(lt.by_enterprise || {}).length || 1, 1) },
-          { name: "P0紧急度", max: Math.max(st.by_priority?.P0 || 1, lt.by_priority?.P0 || 1, 1) },
-          { name: "时间跨度(天)", max: Math.max(Object.keys(st.timeline || {}).length || 1, Object.keys(lt.timeline || {}).length || 1, Object.keys(we.timeline || {}).length || 1, 1) },
-        ],
-        axisName: { color: "#94a3b8", fontSize: 10 },
-        splitArea: { areaStyle: { color: ["rgba(59,130,246,0.02)", "rgba(59,130,246,0.02)"] } },
-        splitLine: { lineStyle: { color: "#1e293b" } },
-        axisLine: { lineStyle: { color: "#1e293b" } },
+      visualMap: {
+        show: true, min: 0, max: 1.2, dimension: 2,
+        orient: "horizontal" as const, left: "center", bottom: 30,
+        textStyle: { color: "#9ca3af", fontSize: 10 },
+        inRange: { color: ["#0d1b2a", "#1b4965", "#3b82f6", "#06b6d4", "#10b981", "#eab308", "#f97316", "#ef4444"] },
       },
-      series: [{
-        type: "radar",
-        data: [
-          { value: [st.total || 0, Object.keys(st.by_category || {}).length, Object.keys(st.by_enterprise || {}).length, st.by_priority?.P0 || 0, Object.keys(st.timeline || {}).length], name: "短期记忆", lineStyle: { color: "#3b82f6", width: 2 }, areaStyle: { color: "rgba(59,130,246,0.15)" }, itemStyle: { color: "#3b82f6" } },
-          { value: [lt.total || 0, Object.keys(lt.by_category || {}).length, Object.keys(lt.by_enterprise || {}).length, lt.by_priority?.P0 || 0, Object.keys(lt.timeline || {}).length], name: "长期记忆", lineStyle: { color: "#10b981", width: 2 }, areaStyle: { color: "rgba(16,185,129,0.15)" }, itemStyle: { color: "#10b981" } },
-          { value: [we.total || 0, Object.keys(we.by_scenario || {}).length, 0, we.by_level?.["红"] || 0, Object.keys(we.timeline || {}).length], name: "预警经验", lineStyle: { color: "#8b5cf6", width: 2 }, areaStyle: { color: "rgba(139,92,246,0.15)" }, itemStyle: { color: "#8b5cf6" } },
-        ],
-      }],
+      xAxis3D: { type: "value" as const, name: "", min: 0, max: 1, nameTextStyle: { color: "#94a3b8" }, axisLine: { lineStyle: { color: "#374151" } }, axisLabel: { color: "#6b7280", fontSize: 9 } },
+      yAxis3D: { type: "value" as const, name: "", min: 0, max: 1, nameTextStyle: { color: "#94a3b8" }, axisLine: { lineStyle: { color: "#374151" } }, axisLabel: { color: "#6b7280", fontSize: 9 } },
+      zAxis3D: { type: "value" as const, name: "指标值", min: 0, max: 1.2, nameTextStyle: { color: "#94a3b8" }, axisLine: { lineStyle: { color: "#374151" } }, axisLabel: { color: "#6b7280", fontSize: 9 } },
+      grid3D: {
+        viewControl: { autoRotate: true, autoRotateSpeed: 4, distance: 220, alpha: 25, beta: 40 },
+        light: { main: { intensity: 1.2, shadow: true, shadowQuality: "high" as const, alpha: 30, beta: 40 }, ambient: { intensity: 0.4 } },
+        postEffect: { enable: true, bloom: { enable: true, bloomIntensity: 0.08 }, SSAO: { enable: true, radius: 2, intensity: 1 } },
+        boxWidth: 100, boxHeight: 100, boxDepth: 100,
+      },
+      series,
     };
   }, [memStats]);
 
@@ -362,8 +408,8 @@ function OverviewDashboard() {
 
           <div className="row cols-2" style={{ marginBottom: 14 }}>
             <div className="scada-card">
-              <div className="risk-report-title" style={{ marginBottom: 10 }}>🎯 多维度雷达对比</div>
-              <ReactECharts option={radarOption} style={{ height: 350 }} />
+              <div className="risk-report-title" style={{ marginBottom: 10 }}>🎯 3D多维度记忆曲面</div>
+              <ReactECharts option={radarOption} style={{ height: 400 }} />
             </div>
             <div className="scada-card">
               <div className="risk-report-title" style={{ marginBottom: 10 }}>🌐 记忆结构旭日图</div>

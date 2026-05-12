@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchIterationStatus, triggerIteration, fetchIterationTracking } from "../api/client";
 import type { IterationStatus, IterationRecord } from "../api/types";
 import ReactECharts from "echarts-for-react";
+import "echarts-gl";
 
 const STATUS_MAP: Record<IterationRecord["status"], { label: string; color: string; bg: string }> = {
   draft: { label: "草稿", color: "#64748b", bg: "rgba(100,116,139,0.12)" },
@@ -573,14 +574,89 @@ function CompareSection() {
 
   const radarOption = useMemo(() => {
     if (selectedRecords.length === 0) return { backgroundColor: "transparent" };
-    const indicators = [{ name: "F1分数", max: 1.0 }, { name: "样本量(归一化)", max: 1.0 }, { name: "稳定性", max: 1.0 }, { name: "场景覆盖", max: 1.0 }, { name: "推理速度(归一化)", max: 1.0 }];
     const maxSamples = Math.max(...records.map((r) => r.samples), 1);
-    const series = selectedRecords.map((r) => ({ value: [r.f1, r.samples / maxSamples, 0.7 + r.f1 * 0.3, r.improvements ? Math.min(r.improvements.length / 5, 1) : 0.3, 0.6 + Math.random() * 0.3], name: r.version }));
+    const dims = ["F1分数", "样本量", "稳定性", "场景覆盖", "推理速度"];
+    const colors3d = ["#3b82f6", "#8b5cf6", "#10b981"];
+    const barData = selectedRecords.map((r, idx) => ({
+      name: r.version,
+      data: [
+        r.f1,
+        r.samples / maxSamples,
+        0.7 + r.f1 * 0.3,
+        r.improvements ? Math.min(r.improvements.length / 5, 1) : 0.3,
+        0.6 + idx * 0.1,
+      ],
+      color: colors3d[idx % 3],
+    }));
+    const N = 30;
+    const series: any[] = [];
+    barData.forEach((item, idx) => {
+      const vals = item.data;
+      const offset = idx * 0.3;
+      series.push({
+        type: "surface" as const,
+        name: item.name,
+        wireframe: { show: false },
+        shading: "realistic" as const,
+        realisticMaterial: { roughness: 0.5, metalness: 0.1 },
+        equation: {
+          x: { min: 0, max: 1, step: 1 / N },
+          y: { min: 0, max: 1, step: 1 / N },
+          z: (x: number, y: number) => {
+            let z = 0;
+            vals.forEach((v, vi) => {
+              const cx = (vi + 0.5) / vals.length;
+              const cy = 0.5;
+              z += v * Math.exp(-((x - cx) ** 2 + (y - cy) ** 2) * 12);
+            });
+            z += offset * 0.1;
+            return Math.max(0, z);
+          },
+        },
+        itemStyle: { opacity: 0.85 },
+      });
+      vals.forEach((v, vi) => {
+        series.push({
+          type: "scatter3D" as const,
+          name: `${item.name}-${dims[vi]}`,
+          data: [[(vi + 0.5) / vals.length, 0.5, v + offset * 0.1]],
+          symbolSize: 10,
+          itemStyle: { color: item.color },
+          label: {
+            show: true,
+            formatter: () => `${dims[vi]}: ${v.toFixed(2)}`,
+            color: "#e5e7eb",
+            fontSize: 10,
+            distance: 5,
+          },
+        });
+      });
+    });
     return {
-      backgroundColor: "transparent", tooltip: {},
-      legend: { data: selectedRecords.map((r) => r.version), textStyle: { color: "#94a3b8", fontSize: 11 }, bottom: 0 },
-      radar: { indicator: indicators, shape: "polygon" as const, splitNumber: 4, axisName: { color: "#94a3b8", fontSize: 11 }, splitLine: { lineStyle: { color: "#1e293b" } }, splitArea: { areaStyle: { color: ["rgba(15,23,42,0.3)", "rgba(15,23,42,0.6)"] } } },
-      series: [{ type: "radar" as const, data: series, lineStyle: { width: 2 }, areaStyle: { opacity: 0.15 } }],
+      backgroundColor: "transparent",
+      tooltip: {},
+      legend: { data: barData.map((d) => d.name), textStyle: { color: "#94a3b8", fontSize: 11 }, bottom: 0 },
+      visualMap: {
+        show: true,
+        min: 0,
+        max: 1.2,
+        dimension: 2,
+        orient: "horizontal" as const,
+        left: "center",
+        bottom: 30,
+        textStyle: { color: "#9ca3af", fontSize: 10 },
+        inRange: { color: ["#0d1b2a", "#1b4965", "#3b82f6", "#06b6d4", "#10b981", "#eab308", "#f97316", "#ef4444"] },
+      },
+      xAxis3D: { type: "value" as const, name: "", min: 0, max: 1, nameTextStyle: { color: "#94a3b8" }, axisLine: { lineStyle: { color: "#374151" } }, axisLabel: { color: "#6b7280", fontSize: 9 } },
+      yAxis3D: { type: "value" as const, name: "", min: 0, max: 1, nameTextStyle: { color: "#94a3b8" }, axisLine: { lineStyle: { color: "#374151" } }, axisLabel: { color: "#6b7280", fontSize: 9 } },
+      zAxis3D: { type: "value" as const, name: "指标值", min: 0, max: 1.2, nameTextStyle: { color: "#94a3b8" }, axisLine: { lineStyle: { color: "#374151" } }, axisLabel: { color: "#6b7280", fontSize: 9 } },
+      grid3D: {
+        viewControl: { autoRotate: true, autoRotateSpeed: 4, distance: 220, alpha: 25, beta: 40 },
+        light: { main: { intensity: 1.2, shadow: true, shadowQuality: "high" as const, alpha: 30, beta: 40 }, ambient: { intensity: 0.4 } },
+        postEffect: { enable: true, bloom: { enable: true, bloomIntensity: 0.08 }, SSAO: { enable: true, radius: 2, intensity: 1 } },
+        boxWidth: 100, boxHeight: 100, boxDepth: 100,
+      },
+      series,
     };
   }, [selectedRecords, records]);
 
@@ -627,7 +703,7 @@ function CompareSection() {
       {selectedRecords.length >= 2 && (
         <>
           <div className="row cols-2" style={{ marginBottom: 14 }}>
-            <div className="scada-card"><div className="risk-report-title" style={{ marginBottom: 10 }}>🎯 雷达图对比</div><ReactECharts option={radarOption} style={{ height: 320 }} /></div>
+            <div className="scada-card"><div className="risk-report-title" style={{ marginBottom: 10 }}>🎯 3D版本对比曲面</div><ReactECharts option={radarOption} style={{ height: 380 }} /></div>
             <div className="scada-card"><div className="risk-report-title" style={{ marginBottom: 10 }}>📊 柱状图对比</div><ReactECharts option={barCompareOption} style={{ height: 320 }} /></div>
           </div>
           <div className="scada-card">

@@ -10,6 +10,7 @@ import ScadaCard from "../components/ScadaCard";
 import { ProbabilityChart, ShapChart } from "../components/charts";
 import JsonView from "../components/JsonView";
 import ReactECharts from "echarts-for-react";
+import "echarts-gl";
 
 interface Props {
   scenario: ScenarioId;
@@ -666,41 +667,151 @@ function RiskScorePanel({ decision }: { decision: DecisionResponse }) {
     }],
   }), [riskScore, levelColor]);
 
-  const radarOption = useMemo(() => ({
-    backgroundColor: "transparent",
-    radar: {
-      indicator: [
-        { name: "严重性", max: 1 },
-        { name: "相关性", max: 1 },
-        { name: "不可逆性", max: 1 },
-      ],
-      shape: "polygon" as const,
-      splitNumber: 4,
-      axisName: { color: "#94a3b8", fontSize: 11 },
-      splitLine: { lineStyle: { color: "#1e293b" } },
-      splitArea: { areaStyle: { color: ["transparent"] } },
-      axisLine: { lineStyle: { color: "#1e293b" } },
-    },
-    series: [{
-      type: "radar" as const,
-      data: [{
-        value: [severity, relevance, irreversibility],
-        name: "三维风险",
-        areaStyle: {
-          color: {
-            type: "radial" as const,
-            x: 0.5, y: 0.5, r: 0.5,
-            colorStops: [
-              { offset: 0, color: "rgba(239,68,68,0.3)" },
-              { offset: 1, color: "rgba(59,130,246,0.1)" },
-            ],
+  const radarOption = useMemo(() => {
+    const s = severity;
+    const r = relevance;
+    const ir = irreversibility;
+    const maxVal = Math.max(s, r, ir, 0.01);
+    const data: number[][] = [];
+    const N = 40;
+    for (let i = 0; i <= N; i++) {
+      for (let j = 0; j <= N; j++) {
+        const x = i / N;
+        const y = j / N;
+        const z =
+          s * Math.exp(-((x - 0.3) ** 2 + (y - 0.3) ** 2) * 8) +
+          r * Math.exp(-((x - 0.7) ** 2 + (y - 0.3) ** 2) * 8) +
+          ir * Math.exp(-((x - 0.5) ** 2 + (y - 0.7) ** 2) * 8) +
+          0.05 * Math.sin(x * 6) * Math.cos(y * 6);
+        data.push([x, y, Math.max(0, z)]);
+      }
+    }
+    return {
+      backgroundColor: "transparent",
+      tooltip: {},
+      visualMap: {
+        show: true,
+        min: 0,
+        max: maxVal * 1.2,
+        dimension: 2,
+        orient: "horizontal" as const,
+        left: "center",
+        bottom: 0,
+        textStyle: { color: "#9ca3af", fontSize: 10 },
+        inRange: {
+          color: [
+            "#0d1b2a",
+            "#1b4965",
+            "#3b82f6",
+            "#06b6d4",
+            "#10b981",
+            "#eab308",
+            "#f97316",
+            "#ef4444",
+          ],
+        },
+      },
+      xAxis3D: {
+        type: "value" as const,
+        name: "严重性",
+        min: 0,
+        max: 1,
+        nameTextStyle: { color: "#94a3b8", fontSize: 11 },
+        axisLine: { lineStyle: { color: "#374151" } },
+        axisLabel: { color: "#6b7280", fontSize: 9 },
+      },
+      yAxis3D: {
+        type: "value" as const,
+        name: "相关性",
+        min: 0,
+        max: 1,
+        nameTextStyle: { color: "#94a3b8", fontSize: 11 },
+        axisLine: { lineStyle: { color: "#374151" } },
+        axisLabel: { color: "#6b7280", fontSize: 9 },
+      },
+      zAxis3D: {
+        type: "value" as const,
+        name: "不可逆性",
+        min: 0,
+        max: maxVal * 1.2,
+        nameTextStyle: { color: "#94a3b8", fontSize: 11 },
+        axisLine: { lineStyle: { color: "#374151" } },
+        axisLabel: { color: "#6b7280", fontSize: 9 },
+      },
+      grid3D: {
+        viewControl: {
+          autoRotate: true,
+          autoRotateSpeed: 6,
+          distance: 200,
+          alpha: 25,
+          beta: 40,
+        },
+        light: {
+          main: { intensity: 1.2, shadow: true, shadowQuality: "high" as const, alpha: 30, beta: 40 },
+          ambient: { intensity: 0.4 },
+        },
+        postEffect: {
+          enable: true,
+          bloom: { enable: true, bloomIntensity: 0.1 },
+          SSAO: { enable: true, radius: 2, intensity: 1 },
+        },
+        boxWidth: 100,
+        boxHeight: 100,
+        boxDepth: 100,
+        environment: "transparent" as unknown as string,
+      },
+      series: [
+        {
+          type: "surface" as const,
+          wireframe: { show: false },
+          shading: "realistic" as const,
+          realisticMaterial: {
+            roughness: 0.4,
+            metalness: 0,
+          },
+          equation: {
+            x: { min: 0, max: 1, step: 1 / N },
+            y: { min: 0, max: 1, step: 1 / N },
+            z: (x: number, y: number) => {
+              const z =
+                s * Math.exp(-((x - 0.3) ** 2 + (y - 0.3) ** 2) * 8) +
+                r * Math.exp(-((x - 0.7) ** 2 + (y - 0.3) ** 2) * 8) +
+                ir * Math.exp(-((x - 0.5) ** 2 + (y - 0.7) ** 2) * 8) +
+                0.05 * Math.sin(x * 6) * Math.cos(y * 6);
+              return Math.max(0, z);
+            },
+          },
+          itemStyle: {
+            opacity: 0.9,
           },
         },
-        lineStyle: { color: "#f97316", width: 2 },
-        itemStyle: { color: "#f97316" },
-      }],
-    }],
-  }), [severity, relevance, irreversibility]);
+        {
+          type: "scatter3D" as const,
+          data: [
+            [0.3, 0.3, s],
+            [0.7, 0.3, r],
+            [0.5, 0.7, ir],
+          ],
+          symbolSize: 12,
+          itemStyle: {
+            color: "#fbbf24",
+            borderColor: "#fff",
+            borderWidth: 1,
+          },
+          label: {
+            show: true,
+            formatter: (p: any) => {
+              const labels = ["严重性", "相关性", "不可逆性"];
+              return labels[p.dataIndex] || "";
+            },
+            color: "#fff",
+            fontSize: 11,
+            distance: 5,
+          },
+        },
+      ],
+    };
+  }, [severity, relevance, irreversibility]);
 
   const shapFactors = (decision.shap_contributions || []).map((s) => ({
     name: s.feature,
@@ -738,9 +849,9 @@ function RiskScorePanel({ decision }: { decision: DecisionResponse }) {
 
         <div className="scada-card">
           <div className="risk-report-title" style={{ marginBottom: 12 }}>
-            三维风险雷达
+            三维风险曲面
           </div>
-          <ReactECharts option={radarOption} style={{ height: 200 }} />
+          <ReactECharts option={radarOption} style={{ height: 320 }} />
           {tdr?.total_score !== undefined && (
             <div style={{ textAlign: "center", marginTop: 4 }}>
               <span className="tag tag-amber">

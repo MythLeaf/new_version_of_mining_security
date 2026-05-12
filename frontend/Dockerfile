@@ -12,7 +12,7 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 
 # 锁文件存在时使用 npm ci，否则退化为 npm install
-RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
+RUN npm install
 
 COPY tsconfig.json tsconfig.node.json vite.config.ts index.html ./
 COPY public ./public

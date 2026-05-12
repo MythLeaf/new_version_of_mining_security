@@ -33,3 +33,22 @@ catboost_info
 
 # 模型与日志（容器内由 volume 提供）
 logs/*.log
+
+# 合并残留的重复文件
+**/*_1.py
+**/*_1.yml
+**/*_1.yaml
+**/*_1.json
+**/*_1.txt
+**/*_1.md
+**/*_1.css
+**/*_1.ts
+**/*_1.tsx
+**/*_1.svg
+**/*_1.html
+**/*_1.conf
+**/*_1.pkl
+**/*_1.example
+**/*_1.xlsx
+**/*_1.csv
+**/*_1.gitkeep

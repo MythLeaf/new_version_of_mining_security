@@ -5,6 +5,7 @@
 数据导出、模型迭代追踪、管理员审批工作流
 """
 
+import asyncio
 import glob
 import io
 import json
@@ -84,7 +85,15 @@ def _persist_store(name: str, data: Any) -> None:
         logger.info(f"持久化 {name} 成功: {len(data) if isinstance(data, (list, dict)) else 'ok'} 条")
     except Exception as e:
         logger.error(f"持久化 {name} 失败: {e}", exc_info=True)
-        raise RuntimeError(f"数据持久化失败 [{name}]: {e}")
+
+
+async def _async_persist(*names_stores: tuple) -> None:
+    loop = asyncio.get_event_loop()
+    for name, store in names_stores:
+        try:
+            await loop.run_in_executor(None, _persist_store, name, store)
+        except Exception as e:
+            logger.error(f"异步持久化 {name} 失败: {e}", exc_info=True)
 
 
 def _load_store(name: str) -> Any:
@@ -287,7 +296,7 @@ def _record_audit(action: str, actor: str, target: str, detail: str, before: Any
         "time": _now_str(),
         "timestamp": time.time(),
     })
-    _persist_store("audit_log", _audit_log_store)
+    asyncio.get_event_loop().run_in_executor(None, _persist_store, "audit_log", _audit_log_store)
 
 
 class ShortTermMemoryItem(BaseModel):
@@ -410,7 +419,7 @@ async def add_short_term(item: ShortTermMemoryItem) -> Dict[str, Any]:
         "context_window_active": item.context_window_active,
     }
     _short_term_store.insert(0, entry)
-    _persist_store("short_term", _short_term_store)
+    await _async_persist(("short_term", _short_term_store))
     return entry
 
 
@@ -418,7 +427,7 @@ async def add_short_term(item: ShortTermMemoryItem) -> Dict[str, Any]:
 async def delete_short_term(item_id: str) -> Dict[str, bool]:
     before = len(_short_term_store)
     _short_term_store[:] = [i for i in _short_term_store if i["id"] != item_id]
-    _persist_store("short_term", _short_term_store)
+    await _async_persist(("short_term", _short_term_store))
     return {"success": len(_short_term_store) < before}
 
 
@@ -474,7 +483,7 @@ async def add_long_term(item: LongTermMemoryItem) -> Dict[str, Any]:
         "verified": item.verified,
     }
     _long_term_store.insert(0, entry)
-    _persist_store("long_term", _long_term_store)
+    await _async_persist(("long_term", _long_term_store))
     return entry
 
 
@@ -503,8 +512,7 @@ async def migrate_to_long_term(req: MigrateRequest) -> List[Dict[str, Any]]:
         _long_term_store.insert(0, entry)
         migrated.append(entry)
     _short_term_store[:] = [i for i in _short_term_store if i["id"] not in req.short_term_ids]
-    _persist_store("short_term", _short_term_store)
-    _persist_store("long_term", _long_term_store)
+    await _async_persist(("short_term", _short_term_store), ("long_term", _long_term_store))
     _record_audit("migrate", "system", "memory", f"迁移 {len(migrated)} 条短期记忆到长期记忆")
     return migrated
 
@@ -530,7 +538,7 @@ async def import_new_data() -> ImportFolderResponse:
         total_rows += len(df)
         total_entries += len(entries)
         details.append({"file": finfo["rel_path"], "status": "imported", "rows": len(df), "columns": len(df.columns), "entries": len(entries)})
-    _persist_store("long_term", _long_term_store)
+    await _async_persist(("long_term", _long_term_store))
     _record_audit("import", "system", "new_data", f"导入 {imported} 个文件，{total_rows} 行数据")
     return ImportFolderResponse(
         success=True,
@@ -579,7 +587,7 @@ async def import_excel_file(file: UploadFile = File(...)) -> ExcelUploadResponse
         _enterprise_data_cache[fname] = df
         entries = _df_to_long_term_entries(df, fname)
         _long_term_store.extend(entries)
-        _persist_store("long_term", _long_term_store)
+        await _async_persist(("long_term", _long_term_store))
         preview = _sanitize_for_json(df.head(5).to_dict(orient="records")) if len(df) > 0 else None
         _record_audit("import", "user", fname, f"上传导入 {len(df)} 行数据")
         return ExcelUploadResponse(
@@ -738,10 +746,12 @@ async def batch_risk_assessment() -> BatchAssessResponse:
 
         results.append(assessment_result)
 
-    _persist_store("short_term", _short_term_store)
-    _persist_store("long_term", _long_term_store)
-    _persist_store("warning_experience", _warning_experience_store)
-    _persist_store("enterprise_risk_history", _enterprise_risk_history)
+    await _async_persist(
+        ("short_term", _short_term_store),
+        ("long_term", _long_term_store),
+        ("warning_experience", _warning_experience_store),
+        ("enterprise_risk_history", _enterprise_risk_history),
+    )
     _record_audit("batch_assess", "system", "memory", f"批量评估 {len(results)} 家企业，生成 {len(experience_entries)} 条预警经验")
     return BatchAssessResponse(
         success=True,
@@ -886,10 +896,12 @@ async def assess_single_enterprise(file: UploadFile = File(...)) -> Dict[str, An
 
             results.append(assessment_result)
 
-        _persist_store("short_term", _short_term_store)
-        _persist_store("long_term", _long_term_store)
-        _persist_store("warning_experience", _warning_experience_store)
-        _persist_store("enterprise_risk_history", _enterprise_risk_history)
+        await _async_persist(
+            ("short_term", _short_term_store),
+            ("long_term", _long_term_store),
+            ("warning_experience", _warning_experience_store),
+            ("enterprise_risk_history", _enterprise_risk_history),
+        )
         _record_audit("assess_enterprise", "user", fname, f"预测分析 {len(results)} 条数据，生成 {experience_count} 条预警经验")
         return _sanitize_for_json({
             "success": True,
@@ -954,7 +966,7 @@ async def iteration_tracking() -> Dict[str, Any]:
                 "improvements": [f"优化特征工程v{i}", f"调整基学习器权重v{i}"],
                 "status": "production",
             })
-        _persist_store("iteration_history", _iteration_history)
+        await _async_persist(("iteration_history", _iteration_history))
 
     latest = _iteration_history[-1] if _iteration_history else None
     return {
@@ -990,7 +1002,7 @@ async def create_approval(req: ApprovalRequest) -> Dict[str, Any]:
         "timestamp": time.time(),
     }
     _approval_store.insert(0, approval)
-    _persist_store("approval_store", _approval_store)
+    await _async_persist(("approval_store", _approval_store))
     _record_audit("create_approval", req.actor, req.target_id, f"创建审批请求: {req.action}")
     return approval
 
@@ -1008,8 +1020,7 @@ async def decide_approval(approval_id: str, decision: str = Query(...), actor: s
     approval["decision_comment"] = comment
     approval["decided_at"] = _now_str()
     _record_audit("decide_approval", actor, approval_id, f"审批决策: {decision}", before=before, after=approval)
-    _persist_store("approval_store", _approval_store)
-    _persist_store("audit_log", _audit_log_store)
+    await _async_persist(("approval_store", _approval_store), ("audit_log", _audit_log_store))
     return approval
 
 
