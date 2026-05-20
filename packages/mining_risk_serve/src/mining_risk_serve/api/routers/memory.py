@@ -43,6 +43,7 @@ os.makedirs(_DATA_DIR, exist_ok=True)
 
 
 def _persist_all_stores() -> None:
+    """内部辅助方法 ``_persist_all_stores``；参数与返回值见类型注解。"""
     for name, data in [
         ("long_term", _long_term_store),
         ("short_term", _short_term_store),
@@ -62,6 +63,7 @@ def _persist_all_stores() -> None:
 
 
 def _auto_save_loop() -> None:
+    """内部辅助方法 ``_auto_save_loop``；参数与返回值见类型注解。"""
     while True:
         time.sleep(30)
         try:
@@ -77,6 +79,7 @@ logger.info("自动保存线程已启动（每30秒）")
 
 
 def _persist_store(name: str, data: Any) -> None:
+    """内部辅助方法 ``_persist_store``；参数与返回值见类型注解。"""
     try:
         fpath = os.path.join(_DATA_DIR, f"{name}.json")
         sanitized = _sanitize_for_json(data)
@@ -89,6 +92,7 @@ def _persist_store(name: str, data: Any) -> None:
 
 
 def _load_store(name: str) -> Any:
+    """内部辅助方法 ``_load_store``；参数与返回值见类型注解。"""
     try:
         fpath = os.path.join(_DATA_DIR, f"{name}.json")
         if os.path.exists(fpath):
@@ -104,6 +108,7 @@ def _load_store(name: str) -> Any:
 
 
 def _restore_all_stores() -> None:
+    """内部辅助方法 ``_restore_all_stores``；参数与返回值见类型注解。"""
     global _long_term_store, _short_term_store, _warning_experience_store
     global _iteration_history, _approval_store, _audit_log_store, _enterprise_risk_history
     for name, store in [
@@ -125,14 +130,27 @@ _restore_all_stores()
 
 
 def _new_id() -> str:
+    """生成 8 位短 UUID 作为内存记录 ID。
+
+    Returns:
+        str: 截断后的 UUID 十六进制字符串。
+    """
+
     return str(uuid.uuid4())[:8]
 
 
 def _now_str() -> str:
+    """返回当前时间的可读字符串。
+
+    Returns:
+        str: 格式为 ``YYYY-MM-DD HH:MM:SS`` 的本地时间。
+    """
+
     return time.strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _sanitize_val(val: Any) -> Any:
+    """内部辅助方法 ``_sanitize_val``；参数与返回值见类型注解。"""
     if val is None:
         return None
     if isinstance(val, float) and (math.isnan(val) or math.isinf(val)):
@@ -147,6 +165,7 @@ def _sanitize_val(val: Any) -> Any:
 
 
 def _sanitize_for_json(obj: Any) -> Any:
+    """内部辅助方法 ``_sanitize_for_json``；参数与返回值见类型注解。"""
     if isinstance(obj, dict):
         return {str(k): _sanitize_for_json(v) for k, v in obj.items()}
     if isinstance(obj, (list, tuple)):
@@ -155,6 +174,12 @@ def _sanitize_for_json(obj: Any) -> Any:
 
 
 def _scan_new_data_dir() -> List[Dict[str, Any]]:
+    """扫描公开数据目录下可用于增量训练的文件元信息。
+
+    Returns:
+        List[Dict[str, Any]]: 每个元素含路径、大小、修改时间等字段。
+    """
+
     base = str(resolve_project_path(get_config().data.public_data_root or "datasets/raw/public"))
     if not os.path.isdir(base):
         logger.warning(f"训练数据目录不存在: {base}")
@@ -172,6 +197,7 @@ def _scan_new_data_dir() -> List[Dict[str, Any]]:
 
 
 def _load_file_to_df(fpath: str) -> Optional[pd.DataFrame]:
+    """内部辅助方法 ``_load_file_to_df``；参数与返回值见类型注解。"""
     ext = Path(fpath).suffix.lower()
     try:
         if ext in (".xlsx", ".xls"):
@@ -189,6 +215,7 @@ def _load_file_to_df(fpath: str) -> Optional[pd.DataFrame]:
 
 
 def _df_to_long_term_entries(df: pd.DataFrame, source_file: str) -> List[Dict[str, Any]]:
+    """内部辅助方法 ``_df_to_long_term_entries``；参数与返回值见类型注解。"""
     entries = []
     cols = list(df.columns)
     summary_text = f"数据表: {source_file} | 行数: {len(df)} | 列: {', '.join(cols[:10])}{'...' if len(cols) > 10 else ''}"
@@ -234,6 +261,7 @@ def _df_to_long_term_entries(df: pd.DataFrame, source_file: str) -> List[Dict[st
 
 
 def _generate_warning_experience(assessment_result: Dict[str, Any]) -> Dict[str, Any]:
+    """内部辅助方法 ``_generate_warning_experience``；参数与返回值见类型注解。"""
     eid = assessment_result.get("enterprise_id", "unknown")
     ent_name = assessment_result.get("enterprise_name", eid)
     risk_level = assessment_result.get("risk_level", "蓝")
@@ -277,6 +305,7 @@ def _generate_warning_experience(assessment_result: Dict[str, Any]) -> Dict[str,
 
 
 def _record_audit(action: str, actor: str, target: str, detail: str, before: Any = None, after: Any = None):
+    """内部辅助方法 ``_record_audit``；参数与返回值见类型注解。"""
     _audit_log_store.insert(0, {
         "id": _new_id(),
         "action": action,
@@ -292,6 +321,10 @@ def _record_audit(action: str, actor: str, target: str, detail: str, before: Any
 
 
 class ShortTermMemoryItem(BaseModel):
+    """
+    ShortTermMemoryItem 类。
+    """
+
     id: str = ""
     text: str
     priority: str = "P2"
@@ -304,6 +337,10 @@ class ShortTermMemoryItem(BaseModel):
 
 
 class LongTermMemoryItem(BaseModel):
+    """
+    LongTermMemoryItem 类。
+    """
+
     id: str = ""
     text: str
     priority: str = "P1"
@@ -316,10 +353,18 @@ class LongTermMemoryItem(BaseModel):
 
 
 class MigrateRequest(BaseModel):
+    """
+    MigrateRequest 类。
+    """
+
     short_term_ids: List[str] = Field(default_factory=list)
 
 
 class ImportFolderResponse(BaseModel):
+    """
+    ImportFolderResponse 类。
+    """
+
     success: bool
     message: str
     files_scanned: int = 0
@@ -330,6 +375,10 @@ class ImportFolderResponse(BaseModel):
 
 
 class BatchAssessResponse(BaseModel):
+    """
+    BatchAssessResponse 类。
+    """
+
     success: bool
     message: str
     results: List[Dict[str, Any]] = Field(default_factory=list)
@@ -338,6 +387,10 @@ class BatchAssessResponse(BaseModel):
 
 
 class ExcelUploadResponse(BaseModel):
+    """
+    ExcelUploadResponse 类。
+    """
+
     success: bool
     message: str
     filename: str = ""
@@ -348,6 +401,10 @@ class ExcelUploadResponse(BaseModel):
 
 
 class ApprovalRequest(BaseModel):
+    """
+    ApprovalRequest 类。
+    """
+
     target_id: str
     action: str
     actor: str = "admin"
@@ -355,6 +412,10 @@ class ApprovalRequest(BaseModel):
 
 
 class ExportRequest(BaseModel):
+    """
+    ExportRequest 类。
+    """
+
     memory_type: str = "long"
     format: str = "xlsx"
     filters: Optional[Dict[str, Any]] = None
@@ -375,6 +436,24 @@ async def query_short_term(
     limit: int = Query(50),
     offset: int = Query(0),
 ) -> Dict[str, Any]:
+    """
+    query short term。
+
+        Args:
+            enterprise_id (Optional[str]): 企业唯一标识
+            category (Optional[str]): 参数 ``category``。
+            priority (Optional[str]): 参数 ``priority``。
+            search (Optional[str]): 参数 ``search``。
+            tags (Optional[str]): 参数 ``tags``。
+            sort_by (str): 参数 ``sort_by``。
+            sort_order (str): 参数 ``sort_order``。
+            limit (int): 参数 ``limit``。
+            offset (int): 参数 ``offset``。
+
+        Returns:
+            (Dict[str, Any]): 函数返回值。
+    """
+
     items = _short_term_store.copy()
     if enterprise_id:
         items = [i for i in items if i.get("enterprise_id") == enterprise_id]
@@ -396,6 +475,16 @@ async def query_short_term(
 
 @router.post("/short-term")
 async def add_short_term(item: ShortTermMemoryItem) -> Dict[str, Any]:
+    """
+    add short term。
+
+        Args:
+            item (ShortTermMemoryItem): 参数 ``item``。
+
+        Returns:
+            (Dict[str, Any]): 函数返回值。
+    """
+
     entry = {
         "id": item.id or _new_id(),
         "text": item.text,
@@ -417,6 +506,16 @@ async def add_short_term(item: ShortTermMemoryItem) -> Dict[str, Any]:
 
 @router.delete("/short-term/{item_id}")
 async def delete_short_term(item_id: str) -> Dict[str, bool]:
+    """
+    delete short term。
+
+        Args:
+            item_id (str): 参数 ``item_id``。
+
+        Returns:
+            (Dict[str, bool]): 函数返回值。
+    """
+
     before = len(_short_term_store)
     _short_term_store[:] = [i for i in _short_term_store if i["id"] != item_id]
     _persist_store("short_term", _short_term_store)
@@ -436,6 +535,25 @@ async def query_long_term(
     limit: int = Query(50),
     offset: int = Query(0),
 ) -> Dict[str, Any]:
+    """
+    query long term。
+
+        Args:
+            enterprise_id (Optional[str]): 企业唯一标识
+            category (Optional[str]): 参数 ``category``。
+            priority (Optional[str]): 参数 ``priority``。
+            search (Optional[str]): 参数 ``search``。
+            data_source (Optional[str]): 参数 ``data_source``。
+            tags (Optional[str]): 参数 ``tags``。
+            sort_by (str): 参数 ``sort_by``。
+            sort_order (str): 参数 ``sort_order``。
+            limit (int): 参数 ``limit``。
+            offset (int): 参数 ``offset``。
+
+        Returns:
+            (Dict[str, Any]): 函数返回值。
+    """
+
     items = _long_term_store.copy()
     if enterprise_id:
         items = [i for i in items if i.get("enterprise_id") == enterprise_id]
@@ -459,6 +577,16 @@ async def query_long_term(
 
 @router.post("/long-term")
 async def add_long_term(item: LongTermMemoryItem) -> Dict[str, Any]:
+    """
+    add long term。
+
+        Args:
+            item (LongTermMemoryItem): 参数 ``item``。
+
+        Returns:
+            (Dict[str, Any]): 函数返回值。
+    """
+
     entry = {
         "id": item.id or _new_id(),
         "text": item.text,
@@ -481,6 +609,16 @@ async def add_long_term(item: LongTermMemoryItem) -> Dict[str, Any]:
 
 @router.post("/migrate")
 async def migrate_to_long_term(req: MigrateRequest) -> List[Dict[str, Any]]:
+    """
+    migrate to long term。
+
+        Args:
+            req (MigrateRequest): 参数 ``req``。
+
+        Returns:
+            (List[Dict[str, Any]]): 函数返回值。
+    """
+
     migrated = []
     for sid in req.short_term_ids:
         short_item = next((i for i in _short_term_store if i["id"] == sid), None)
@@ -512,6 +650,13 @@ async def migrate_to_long_term(req: MigrateRequest) -> List[Dict[str, Any]]:
 
 @router.post("/import-new-data", response_model=ImportFolderResponse)
 async def import_new_data() -> ImportFolderResponse:
+    """
+    import new data。
+
+        Returns:
+            (ImportFolderResponse): 函数返回值。
+    """
+
     files = _scan_new_data_dir()
     if not files:
         return ImportFolderResponse(success=True, message="datasets/raw/public 目录为空或不存在", files_scanned=0)
@@ -546,6 +691,16 @@ async def import_new_data() -> ImportFolderResponse:
 
 @router.post("/import-excel", response_model=ExcelUploadResponse)
 async def import_excel_file(file: UploadFile = File(...)) -> ExcelUploadResponse:
+    """
+    import excel file。
+
+        Args:
+            file (UploadFile): 参数 ``file``。
+
+        Returns:
+            (ExcelUploadResponse): 函数返回值。
+    """
+
     try:
         content = await file.read()
         if not content:
@@ -596,6 +751,13 @@ async def import_excel_file(file: UploadFile = File(...)) -> ExcelUploadResponse
 
 @router.get("/enterprise-data-summary")
 async def enterprise_data_summary() -> Dict[str, Any]:
+    """
+    enterprise data summary。
+
+        Returns:
+            (Dict[str, Any]): 函数返回值。
+    """
+
     data_entries = [e for e in _long_term_store if e.get("category") == "enterprise_data"]
     sources = set()
     table_entries = [e for e in data_entries if e.get("columns")]
@@ -620,6 +782,13 @@ async def enterprise_data_summary() -> Dict[str, Any]:
 
 @router.post("/batch-assess", response_model=BatchAssessResponse)
 async def batch_risk_assessment() -> BatchAssessResponse:
+    """
+    batch risk assessment。
+
+        Returns:
+            (BatchAssessResponse): 函数返回值。
+    """
+
     data_entries = [e for e in _long_term_store if e.get("category") == "enterprise_data" and e.get("row_data")]
     if not data_entries:
         return BatchAssessResponse(success=False, message="长期记忆库中无企业数据，请先导入数据")
@@ -755,6 +924,16 @@ async def batch_risk_assessment() -> BatchAssessResponse:
 
 @router.post("/assess-enterprise")
 async def assess_single_enterprise(file: UploadFile = File(...)) -> Dict[str, Any]:
+    """
+    assess single enterprise。
+
+        Args:
+            file (UploadFile): 参数 ``file``。
+
+        Returns:
+            (Dict[str, Any]): 函数返回值。
+    """
+
     try:
         content = await file.read()
         if not content:
@@ -917,6 +1096,22 @@ async def list_warning_experiences(
     limit: int = Query(50),
     offset: int = Query(0),
 ) -> Dict[str, Any]:
+    """
+    list warning experiences。
+
+        Args:
+            enterprise_id (Optional[str]): 企业唯一标识
+            risk_level (Optional[str]): 参数 ``risk_level``。
+            search (Optional[str]): 参数 ``search``。
+            sort_by (str): 参数 ``sort_by``。
+            sort_order (str): 参数 ``sort_order``。
+            limit (int): 参数 ``limit``。
+            offset (int): 参数 ``offset``。
+
+        Returns:
+            (Dict[str, Any]): 函数返回值。
+    """
+
     items = _warning_experience_store.copy()
     if enterprise_id:
         items = [i for i in items if i.get("enterprise_id") == enterprise_id]
@@ -933,12 +1128,29 @@ async def list_warning_experiences(
 
 @router.get("/enterprise-risk-history/{enterprise_id}")
 async def get_enterprise_risk_history(enterprise_id: str) -> Dict[str, Any]:
+    """
+    get enterprise risk history。
+
+        Args:
+            enterprise_id (Optional[str]): 企业唯一标识
+
+        Returns:
+            (Dict[str, Any]): 函数返回值。
+    """
+
     history = _enterprise_risk_history.get(enterprise_id, [])
     return {"enterprise_id": enterprise_id, "history": history, "total": len(history)}
 
 
 @router.get("/iteration-tracking")
 async def iteration_tracking() -> Dict[str, Any]:
+    """
+    iteration tracking。
+
+        Returns:
+            (Dict[str, Any]): 函数返回值。
+    """
+
     if not _iteration_history:
         for i in range(5):
             _iteration_history.append({
@@ -971,6 +1183,18 @@ async def list_approvals(
     limit: int = Query(50),
     offset: int = Query(0),
 ) -> Dict[str, Any]:
+    """
+    list approvals。
+
+        Args:
+            status (Optional[str]): 参数 ``status``。
+            limit (int): 参数 ``limit``。
+            offset (int): 参数 ``offset``。
+
+        Returns:
+            (Dict[str, Any]): 函数返回值。
+    """
+
     items = _approval_store.copy()
     if status:
         items = [i for i in items if i.get("status") == status]
@@ -980,6 +1204,16 @@ async def list_approvals(
 
 @router.post("/approvals")
 async def create_approval(req: ApprovalRequest) -> Dict[str, Any]:
+    """
+    create approval。
+
+        Args:
+            req (ApprovalRequest): 参数 ``req``。
+
+        Returns:
+            (Dict[str, Any]): 函数返回值。
+    """
+
     approval = {
         "id": _new_id(),
         "target_id": req.target_id,
@@ -998,6 +1232,19 @@ async def create_approval(req: ApprovalRequest) -> Dict[str, Any]:
 
 @router.post("/approvals/{approval_id}/decide")
 async def decide_approval(approval_id: str, decision: str = Query(...), actor: str = Query("admin"), comment: str = Query("")) -> Dict[str, Any]:
+    """
+    decide approval。
+
+        Args:
+            approval_id (str): 参数 ``approval_id``。
+            decision (Dict[str, Any]): LLM 或规则引擎输出的决策字典
+            actor (str): 参数 ``actor``。
+            comment (str): 参数 ``comment``。
+
+        Returns:
+            (Dict[str, Any]): 函数返回值。
+    """
+
     approval = next((a for a in _approval_store if a["id"] == approval_id), None)
     if not approval:
         raise HTTPException(status_code=404, detail="审批记录不存在")
@@ -1022,6 +1269,20 @@ async def list_audit_logs(
     limit: int = Query(50),
     offset: int = Query(0),
 ) -> Dict[str, Any]:
+    """
+    list audit logs。
+
+        Args:
+            action (Optional[str]): 参数 ``action``。
+            actor (Optional[str]): 参数 ``actor``。
+            search (Optional[str]): 参数 ``search``。
+            limit (int): 参数 ``limit``。
+            offset (int): 参数 ``offset``。
+
+        Returns:
+            (Dict[str, Any]): 函数返回值。
+    """
+
     items = _audit_log_store.copy()
     if action:
         items = [i for i in items if i.get("action") == action]
@@ -1036,6 +1297,13 @@ async def list_audit_logs(
 
 @router.post("/export")
 async def export_data(req: ExportRequest):
+    """
+    export data。
+
+        Args:
+            req (ExportRequest): 参数 ``req``。
+    """
+
     if req.memory_type == "short":
         items = _short_term_store.copy()
     elif req.memory_type == "long":
@@ -1157,6 +1425,13 @@ async def export_data(req: ExportRequest):
 
 @router.get("/stats")
 async def memory_stats() -> Dict[str, Any]:
+    """
+    memory stats。
+
+        Returns:
+            (Dict[str, Any]): 函数返回值。
+    """
+
     short_total = len(_short_term_store)
     long_total = len(_long_term_store)
     short_by_cat: Dict[str, int] = {}
@@ -1242,6 +1517,13 @@ async def memory_stats() -> Dict[str, Any]:
 
 @router.post("/persist")
 async def manual_persist() -> Dict[str, bool]:
+    """
+    manual persist。
+
+        Returns:
+            (Dict[str, bool]): 函数返回值。
+    """
+
     try:
         _persist_all_stores()
         return {"success": True}

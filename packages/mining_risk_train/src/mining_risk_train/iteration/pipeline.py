@@ -21,6 +21,7 @@ logger = get_logger(__name__)
 
 class TrainingPipeline:
     """
+
     自动训练流水线
     """
 
@@ -29,6 +30,7 @@ class TrainingPipeline:
         raw_data_path: Optional[str] = None,
         models_dir: Optional[str] = None,
     ):
+        """初始化 TrainingPipeline；参数含义见类型注解与类文档。"""
         config = get_config()
         self.raw_data_path = raw_data_path or config.data.raw_data_path
         default_models = resolve_project_path(
@@ -39,6 +41,7 @@ class TrainingPipeline:
 
     def _next_model_version(self) -> str:
         """生成下一个模型版本号"""
+
         existing = list(Path(self.models_dir).glob("stacking_risk_v*.pkl"))
         max_v = 0
         for f in existing:
@@ -66,6 +69,7 @@ class TrainingPipeline:
                 "status": str,
             }
         """
+
         model_version = model_version or self._next_model_version()
         model_path = os.path.join(self.models_dir, f"stacking_risk_{model_version}.pkl")
         pipeline_path = os.path.join(self.models_dir, f"preprocessing_pipeline_{model_version}.pkl")
@@ -136,6 +140,7 @@ class TrainingPipeline:
 
 def main():
     """命令行入口：python -m mining_risk_agent.iteration.pipeline"""
+
     pipeline = TrainingPipeline()
     result = pipeline.run()
     print(result)

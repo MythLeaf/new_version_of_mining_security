@@ -104,6 +104,13 @@ SCENARIO_DEFAULTS: Dict[str, Dict[str, Any]] = {
 
 @dataclass
 class NormalizationReport:
+    """字段规范化过程的可审计报告。
+
+    Attributes:
+        mapped_fields: 由中文别名映射到英文字段名的记录，格式 ``别名->canonical``。
+        defaulted_fields: 因缺失而被填充默认值的英文字段名列表。
+    """
+
     mapped_fields: List[str]
     defaulted_fields: List[str]
 
@@ -113,7 +120,21 @@ def normalize_enterprise_record(
     enterprise_id: Optional[str] = None,
     scenario_id: Optional[str] = None,
 ) -> tuple[Dict[str, Any], NormalizationReport]:
-    """把 API 输入规范化为训练 pipeline 需要的英文字段。"""
+    """将 API/前端输入规范化为训练流水线所需的英文字段字典。
+
+    处理顺序：补全 ``enterprise_id`` → 中英文字段别名映射 → 场景默认值 →
+    演示字段派生 → 按 ``config.features`` 补齐 pipeline 必填列。
+
+    Args:
+        raw (Mapping[str, Any]): 原始请求体或单行企业数据（可含中文键名）。
+        enterprise_id (Optional[str]): 路径或查询参数中的企业 ID，用于补全 ``enterprise_id`` 列。
+        scenario_id (Optional[str]): 行业场景 ID（``chemical`` / ``metallurgy`` / ``dust``），
+            用于填充 ``SCENARIO_DEFAULTS`` 中的缺省字段。
+
+    Returns:
+        tuple[Dict[str, Any], NormalizationReport]: 规范化后的记录字典与变更报告。
+    """
+
 
     normalized: Dict[str, Any] = dict(raw)
     mapped_fields: List[str] = []
@@ -143,7 +164,15 @@ def normalize_enterprise_record(
 
 
 def required_feature_columns() -> Set[str]:
-    """汇总已训练 pipeline 可能要求出现的原始输入列。"""
+    """汇总当前配置下特征流水线可能要求的全部原始输入列名。
+
+    合并 ``id/binary/numeric/enum/text/industry`` 列及 ``special_features`` 中
+    引用的列，并排除目标列 ``new_level``。
+
+    Returns:
+        Set[str]: 去重后的英文字段名集合。
+    """
+
 
     cfg = get_config().features
     required: Set[str] = set()
@@ -171,6 +200,14 @@ def required_feature_columns() -> Set[str]:
 
 
 def _flatten_special_features(special_features: Mapping[str, Any]) -> Set[str]:
+    """展开 ``special_features`` 配置块中引用的全部原始列名。
+
+    Args:
+        special_features (Mapping[str, Any]): ``config.features.special_features`` 字典。
+
+    Returns:
+        Set[str]: 需要出现在输入 DataFrame 中的列名集合。
+    """
     required: Set[str] = set()
     dust = special_features.get("dust_removal", {}) or {}
     required.update(c for c in (dust.get("dry_col"), dust.get("wet_col")) if c)
@@ -191,6 +228,13 @@ def _flatten_special_features(special_features: Mapping[str, Any]) -> Set[str]:
 
 
 def _apply_scenario_defaults(record: MutableMapping[str, Any], scenario_id: Optional[str]) -> None:
+    """
+            按场景填充默认字段（原地）。
+        
+        Args:
+                record (MutableMapping[str, Any]): 企业记录。
+                scenario_id (Optional[str]): chemical/metallurgy/dust。
+        """
     if not scenario_id:
         scenario_id = str(record.get("scenario_id") or "")
     defaults = SCENARIO_DEFAULTS.get(scenario_id, {})
@@ -201,6 +245,7 @@ def _apply_scenario_defaults(record: MutableMapping[str, Any], scenario_id: Opti
 
 def _derive_demo_fields(record: MutableMapping[str, Any]) -> None:
     """从前端演示字段派生一组训练特征，尽量保持语义保守。"""
+
 
     if _has_value(record.get("风险等级")) and not _has_value(record.get("risk_level_d_count")):
         try:
@@ -233,6 +278,16 @@ def _derive_demo_fields(record: MutableMapping[str, Any]) -> None:
 
 
 def _fill_missing_required_fields(record: MutableMapping[str, Any], required: Iterable[str]) -> List[str]:
+    """
+            为必填列填充类型默认值（原地）。
+        
+        Args:
+                record (MutableMapping): 记录。
+                required (Iterable[str]): 必填列。
+        
+        Returns:
+                List[str]: 被填充的列名。
+        """
     cfg = get_config().features
     binary_cols = set(cfg.binary_columns)
     numeric_cols = set(cfg.numeric_columns)
@@ -264,10 +319,28 @@ def _fill_missing_required_fields(record: MutableMapping[str, Any], required: It
 
 
 def _has_value(value: Any) -> bool:
+    """
+            判断字段是否非空。
+        
+        Args:
+                value (Any): 取值。
+        
+        Returns:
+                bool: 是否有效。
+        """
     return value is not None and value != ""
 
 
 def _to_int(value: Any) -> int:
+    """
+            安全转 int，失败返回 0。
+        
+        Args:
+                value (Any): 输入。
+        
+        Returns:
+                int: 结果。
+        """
     try:
         return int(float(value))
     except (TypeError, ValueError):
@@ -275,6 +348,15 @@ def _to_int(value: Any) -> int:
 
 
 def _to_float(value: Any) -> float:
+    """
+            安全转 float，失败返回 0.0。
+        
+        Args:
+                value (Any): 输入。
+        
+        Returns:
+                float: 结果。
+        """
     try:
         return float(value)
     except (TypeError, ValueError):

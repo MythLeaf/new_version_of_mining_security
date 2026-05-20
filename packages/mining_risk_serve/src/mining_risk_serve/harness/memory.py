@@ -27,6 +27,7 @@ logger = get_logger(__name__)
 
 
 def _env_bool(names: List[str], default: Optional[bool] = None) -> Optional[bool]:
+    """内部辅助方法 ``_env_bool``；参数与返回值见类型注解。"""
     for name in names:
         value = os.getenv(name)
         if value is None:
@@ -36,6 +37,7 @@ def _env_bool(names: List[str], default: Optional[bool] = None) -> Optional[bool
 
 
 def _risk_type_filter(value: Optional[str]) -> Optional[Dict[str, str]]:
+    """内部辅助方法 ``_risk_type_filter``；参数与返回值见类型注解。"""
     if not value:
         return None
     normalized = value.strip()
@@ -75,19 +77,43 @@ class _CompatibleSummaryMemory:
     支持 LangChain 0.x (predict) 与 1.x (invoke) 两种 LLM 接口。
     """
 
+
     def __init__(self, llm: Any):
+        """初始化 _CompatibleSummaryMemory；参数含义见类型注解与类文档。"""
         self.llm = llm
         self._buffer = ""
 
     def clear(self) -> None:
+        """
+        clear。
+        """
+
         self._buffer = ""
 
     def save_context(self, inputs: Dict[str, str], outputs: Dict[str, str]) -> None:
+        """
+        save context。
+
+        Args:
+                inputs (Dict[str, str]): 参数 ``inputs``。
+                outputs (Dict[str, str]): 参数 ``outputs``。
+        """
+
         text = inputs.get("input", "")
         if text:
             self._buffer += f"\n{text}"
 
     def load_memory_variables(self, inputs: Dict[str, Any]) -> Dict[str, str]:
+        """
+        load memory variables。
+
+        Args:
+                inputs (Dict[str, Any]): 参数 ``inputs``。
+
+        Returns:
+                (Dict[str, str]): 函数返回值。
+        """
+
         if not self._buffer.strip():
             return {"history": ""}
         prompt = f"请对以下内容进行摘要：\n{self._buffer.strip()}\n摘要："
@@ -112,7 +138,18 @@ class _CompatibleSummaryMemory:
 class _SimpleSummarizer:
     """当无 LLM 可用时的纯文本降级摘要器"""
 
+
     def summarize(self, text: str) -> str:
+        """
+        summarize。
+
+        Args:
+                text (str): 参数 ``text``。
+
+        Returns:
+                (str): 函数返回值。
+        """
+
         if not text:
             return "...[摘要]"
         max_len = min(100, max(1, len(text) // 2))
@@ -123,6 +160,7 @@ class _SimpleSummarizer:
 # async 线程池兼容（Python < 3.9 回退）
 # ---------------------------------------------------------------------------
 def _to_thread(func, *args, **kwargs):
+    """内部辅助方法 ``_to_thread``；参数与返回值见类型注解。"""
     if hasattr(asyncio, "to_thread"):
         return asyncio.to_thread(func, *args, **kwargs)
     import concurrent.futures
@@ -137,6 +175,7 @@ class ShortTermMemory:
     P0-P3 四级优先级 + tiktoken 计数 + LRU 动态清理
     """
 
+
     def __init__(
         self,
         max_tokens: int = 180000,
@@ -144,6 +183,7 @@ class ShortTermMemory:
         llm: Optional[Any] = None,
         token_counter: Optional[Callable[[str], int]] = None,
     ):
+        """初始化 ShortTermMemory；参数含义见类型注解与类文档。"""
         config = get_config()
         self.max_tokens = max_tokens
         self.safety_threshold = safety_threshold
@@ -163,6 +203,7 @@ class ShortTermMemory:
         self._summarizer = self._init_summarizer(llm)
 
     def _init_summarizer(self, llm: Optional[Any]) -> Any:
+        """内部辅助方法 ``_init_summarizer``；参数与返回值见类型注解。"""
         if llm is not None:
             if HAS_LANGCHAIN_MEMORY:
                 try:
@@ -173,6 +214,7 @@ class ShortTermMemory:
         return _SimpleSummarizer()
 
     def _count_tokens(self, text: str) -> int:
+        """内部辅助方法 ``_count_tokens``；参数与返回值见类型注解。"""
         if self._token_counter is not None:
             return max(0, int(self._token_counter(text)))
         if self._encoder is not None:
@@ -212,6 +254,7 @@ class ShortTermMemory:
 
     def _summarize_text(self, text: str) -> str:
         """使用 ConversationSummaryMemory（或兼容层）生成摘要"""
+
         if HAS_LANGCHAIN_MEMORY and isinstance(self._summarizer, ConversationSummaryMemory):
             try:
                 self._summarizer.clear()
@@ -240,6 +283,7 @@ class ShortTermMemory:
 
     def add(self, content: str, priority: str = "P2", metadata: Optional[Dict] = None) -> None:
         """添加记忆条目（同步接口，保持向后兼容）"""
+
         if priority not in self.priority_order:
             raise MemoryManagerError(f"无效的优先级: {priority}")
 
@@ -256,6 +300,7 @@ class ShortTermMemory:
 
     def _maybe_cleanup(self) -> None:
         """检查并触发清理：清 P3 → P1 摘要降级 → P2 无损压缩"""
+
         total = sum(e["tokens"] for e in self.memory)
         if total <= self.token_limit:
             return
@@ -334,6 +379,7 @@ class ShortTermMemory:
 
     def get_context(self, max_tokens: Optional[int] = None) -> str:
         """获取当前上下文（按优先级排序，高优先级在前）"""
+
         limit = max_tokens or self.token_limit
         sorted_entries = sorted(
             self.memory,
@@ -351,17 +397,30 @@ class ShortTermMemory:
         return "\n".join(result)
 
     def get_all(self) -> List[Dict[str, Any]]:
+        """
+        get all。
+
+        Returns:
+                (List[Dict[str, Any]]): 函数返回值。
+        """
+
         return self.memory.copy()
 
     def get_p1_summaries(self) -> List[Dict[str, Any]]:
         """获取已摘要的 P1 记忆（供归档使用）"""
+
         return self._summarized_p1.copy()
 
     def clear_p1_summaries(self) -> None:
         """清空已记录的 P1 摘要"""
+
         self._summarized_p1 = []
 
     def clear(self) -> None:
+        """
+        clear。
+        """
+
         self.memory = []
         self._summarized_p1 = []
 
@@ -372,6 +431,7 @@ class LongTermMemory:
     基于 AgentFS 读写 4 个 Markdown 长期记忆库
     RAG 检索：VectorStore SelfQuery + BGE-Reranker 精排
     """
+
 
     DEFAULT_MEMORY_FILES = [
         "memory/核心指令归档.md",
@@ -394,6 +454,7 @@ class LongTermMemory:
             vector_store: VectorStore 实例，默认 None（按需创建）
             reranker: Reranker 实例，默认新建
         """
+
         if knowledge_base is not None:
             warnings.warn(
                 "knowledge_base 参数已弃用，LongTermMemory 现在直接使用 AgentFS",
@@ -417,6 +478,7 @@ class LongTermMemory:
     # ------------------------------------------------------------------
     def _init_legacy_models(self) -> None:
         """初始化旧版嵌入模型（仅用于 retrieve 兼容方法）"""
+
         try:
             from sentence_transformers import SentenceTransformer
         except ImportError:
@@ -439,6 +501,7 @@ class LongTermMemory:
 
     def _build_legacy_index(self) -> None:
         """构建旧版知识库索引（仅用于 retrieve 兼容方法）"""
+
         self._chunks: List[str] = []
         self._embeddings: Optional[Any] = None
         self._chunk_sources: List[str] = []
@@ -470,6 +533,7 @@ class LongTermMemory:
                 logger.warning(f"旧版嵌入计算失败: {e}")
 
     def _ensure_legacy_initialized(self) -> None:
+        """内部辅助方法 ``_ensure_legacy_initialized``；参数与返回值见类型注解。"""
         if not self._legacy_initialized:
             self._init_legacy_models()
             self._build_legacy_index()
@@ -480,6 +544,7 @@ class LongTermMemory:
         旧版 RAG 检索（向后兼容）
         建议使用新的 recall() 方法以获得 SelfQuery + BGE-Reranker 精排能力
         """
+
         self._ensure_legacy_initialized()
         if not self._chunks:
             return []
@@ -528,6 +593,7 @@ class LongTermMemory:
 
     def add_experience(self, content: str) -> None:
         """旧版：添加经验到长期记忆（向后兼容）"""
+
         timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
         entry = f"\n\n## 记录 {timestamp}\n{content}\n"
         path = "knowledge_base/预警历史经验与短期记忆摘要.md"
@@ -544,6 +610,7 @@ class LongTermMemory:
     # ------------------------------------------------------------------
     def _ensure_memory_files(self) -> None:
         """确保 4 个长期记忆库文件存在"""
+
         for path in self.memory_files:
             if not self.agentfs.exists(path):
                 header = (
@@ -554,18 +621,21 @@ class LongTermMemory:
 
     def _get_vector_store(self) -> VectorStore:
         """延迟初始化 VectorStore"""
+
         if self._vector_store is None:
             self._vector_store = VectorStore()
         return self._vector_store
 
     def _get_reranker(self) -> Reranker:
         """延迟初始化 Reranker"""
+
         if self._reranker is None:
             self._reranker = Reranker()
         return self._reranker
 
     def is_rag_enabled(self) -> bool:
         """长期记忆 RAG 开关，默认开启；部署配置可显式关闭以隔离 native 依赖。"""
+
         try:
             env_override = _env_bool(["RAG_ENABLED", "MINING_RAG_ENABLED", "HARNESS_RAG_ENABLED"])
             if env_override is not None:
@@ -588,6 +658,7 @@ class LongTermMemory:
             p1_memories: P1 摘要记忆列表，每个元素应包含 summary / content、metadata、timestamp
             target_file: 目标归档文件路径（AgentFS 路径），默认使用 memory/风险事件归档.md
         """
+
         if not p1_memories:
             return
 
@@ -639,6 +710,7 @@ class LongTermMemory:
         Returns:
             检索结果列表，每个元素包含 text / metadata / id / rerank_score
         """
+
         if not query or not query.strip():
             return []
         if not self.is_rag_enabled():
@@ -691,6 +763,7 @@ class LongTermMemory:
 
     def trace_event(self, commit_id: str) -> Dict[str, Any]:
         """事故溯源：通过 Commit ID 回滚到历史状态"""
+
         self.agentfs.rollback(commit_id)
         return {
             "commit_id": commit_id,
@@ -704,11 +777,13 @@ class HybridMemoryManager:
     长短期混合记忆管理器
     """
 
+
     def __init__(
         self,
         short_term: Optional[ShortTermMemory] = None,
         long_term: Optional[LongTermMemory] = None,
     ):
+        """初始化 HybridMemoryManager；参数含义见类型注解与类文档。"""
         config = get_config()
         self.short_term = short_term or ShortTermMemory(
             max_tokens=config.harness.memory.short_term.max_tokens,
@@ -718,6 +793,7 @@ class HybridMemoryManager:
 
     def add_short_term(self, content: str, priority: str = "P2", metadata: Optional[Dict] = None) -> None:
         """添加短期记忆（同步）"""
+
         self.short_term.add(content, priority, metadata)
 
     def query_long_term(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
@@ -725,6 +801,7 @@ class HybridMemoryManager:
         旧版长期记忆查询（向后兼容）
         建议使用 recall_long_term() 以获得 SelfQuery + BGE-Reranker 能力
         """
+
         return self.long_term.retrieve(query, top_k=top_k)
 
     async def recall_long_term(
@@ -734,19 +811,23 @@ class HybridMemoryManager:
         top_k: int = 5,
     ) -> List[Dict[str, Any]]:
         """新版长期记忆召回（异步，含 SelfQuery + BGE-Reranker）"""
+
         return await self.long_term.recall(query, risk_level=risk_level, top_k=top_k)
 
     def is_long_term_rag_enabled(self) -> bool:
         """返回长期记忆 RAG 是否启用，供工作流输出更准确的节点状态。"""
+
         return self.long_term.is_rag_enabled()
 
     def get_combined_context(self, query: str, max_tokens: Optional[int] = None) -> str:
         """获取组合上下文：短期记忆 + 长期记忆查询提示"""
+
         short_context = self.short_term.get_context(max_tokens=max_tokens)
         return f"【短期记忆】\n{short_context}\n\n【长期记忆查询】\n{query}"
 
     async def archive_experience(self) -> None:
         """将短期记忆中 P1 摘要归档到长期记忆（异步）"""
+
         p1_summaries = self.short_term.get_p1_summaries()
         if p1_summaries:
             await self.long_term.summarize_and_archive(p1_summaries)

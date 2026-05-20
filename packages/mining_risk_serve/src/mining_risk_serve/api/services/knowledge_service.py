@@ -27,14 +27,18 @@ class KnowledgeService:
         repository: 知识库持久化实现，默认每次从工厂获取新实例以支持热更新。
     """
 
+
     def __init__(self, repository: KnowledgeRepository | None = None) -> None:
+        """初始化 KnowledgeService；参数含义见类型注解与类文档。"""
         self._repository = repository
 
     def _repo(self) -> KnowledgeRepository:
+        """内部辅助方法 ``_repo``；参数与返回值见类型注解。"""
         return self._repository or get_knowledge_repository()
 
     def list_files(self) -> List[str]:
         """列出所有知识库 Markdown 文件名。"""
+
         return self._repo().list_files()
 
     def read_file(self, filename: str) -> KnowledgeFileContent:
@@ -49,6 +53,7 @@ class KnowledgeService:
         Raises:
             HTTPException: 文件不存在或读取失败时 404。
         """
+
         try:
             content = self._repo().read(filename)
             return KnowledgeFileContent(filename=filename, content=content)
@@ -58,6 +63,7 @@ class KnowledgeService:
 
     def write_file(self, request: KnowledgeUpdateRequest) -> KnowledgeMutationResponse:
         """覆盖写入知识库文件。"""
+
         try:
             self._repo().write(request.filename, request.content, agent_id=request.agent_id)
             return KnowledgeMutationResponse(status="success", filename=request.filename)
@@ -66,6 +72,7 @@ class KnowledgeService:
 
     def append_file(self, request: KnowledgeAppendRequest) -> KnowledgeMutationResponse:
         """追加内容到知识库文件末尾。"""
+
         try:
             self._repo().append(request.filename, request.content, agent_id=request.agent_id)
             return KnowledgeMutationResponse(status="success", filename=request.filename)
@@ -74,6 +81,7 @@ class KnowledgeService:
 
     def snapshot(self, commit_message: str, agent_id: str | None = None) -> KnowledgeMutationResponse:
         """创建知识库版本快照。"""
+
         try:
             commit_id = self._repo().snapshot(commit_message, agent_id=agent_id)
             return KnowledgeMutationResponse(status="success", commit_id=commit_id)
@@ -89,6 +97,7 @@ class KnowledgeService:
         Returns:
             回滚操作结果。
         """
+
         try:
             self._repo().rollback(commit_id)
             return KnowledgeMutationResponse(status="success", commit_id=commit_id)
@@ -98,4 +107,5 @@ class KnowledgeService:
 
 def get_knowledge_service() -> KnowledgeService:
     """FastAPI 依赖：知识库服务。"""
+
     return KnowledgeService()

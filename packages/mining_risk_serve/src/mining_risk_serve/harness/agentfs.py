@@ -25,6 +25,7 @@ logger = get_logger(__name__)
 @dataclass
 class FileStat:
     """文件元数据结构体"""
+
     path: str
     size: int
     mode: str
@@ -45,9 +46,11 @@ class AgentFS:
     3. operation_log: 操作日志（READ/WRITE/DELETE）
     """
 
+
     ALLOWED_ROOTS = ("knowledge_base", "memory")
 
     def __init__(self, db_path: Optional[str] = None, git_repo_path: Optional[str] = None):
+        """初始化 AgentFS；参数含义见类型注解与类文档。"""
         config = get_config()
         self.db_path = db_path or config.harness.agentfs.db_path
         self.git_repo_path = git_repo_path or config.harness.agentfs.git_repo_path
@@ -56,11 +59,13 @@ class AgentFS:
         self._init_git()
 
     def _ensure_dirs(self) -> None:
+        """内部辅助方法 ``_ensure_dirs``；参数与返回值见类型注解。"""
         os.makedirs(os.path.dirname(self.db_path) or ".", exist_ok=True)
         os.makedirs(self.git_repo_path, exist_ok=True)
 
     def _init_db(self) -> None:
         """初始化 SQLite 数据库"""
+
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
@@ -76,6 +81,7 @@ class AgentFS:
 
         # metadata 表：存储权限/时间/AgentID
         cursor.execute("""
+
             CREATE TABLE IF NOT EXISTS metadata (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 path TEXT UNIQUE NOT NULL,
@@ -91,6 +97,7 @@ class AgentFS:
 
         # operation_log 表：READ/WRITE/DELETE 审计日志
         cursor.execute("""
+
             CREATE TABLE IF NOT EXISTS operation_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp REAL NOT NULL,
@@ -132,22 +139,26 @@ class AgentFS:
 
     def _init_git(self) -> None:
         """初始化 Git 仓库"""
+
         git_dir = os.path.join(self.git_repo_path, ".git")
         if not os.path.exists(git_dir):
             Repo.init(self.git_repo_path)
             logger.info(f"Git 仓库已初始化: {self.git_repo_path}")
 
     def _get_conn(self) -> sqlite3.Connection:
+        """内部辅助方法 ``_get_conn``；参数与返回值见类型注解。"""
         return sqlite3.connect(self.db_path)
 
     @staticmethod
     def _normalize_path(path: str) -> str:
+        """内部辅助方法 ``_normalize_path``；参数与返回值见类型注解。"""
         if not path.startswith("/"):
             path = "/" + path
         return path
 
     def _validate_path(self, path: str) -> None:
         """路径沙箱：仅允许 knowledge_base/ 与 memory/ 为根"""
+
         normalized = self._normalize_path(path)
         parts = normalized.strip("/").split("/")
         if not parts or parts[0] not in self.ALLOWED_ROOTS:
@@ -158,6 +169,7 @@ class AgentFS:
     def _log_operation(self, operation: str, path: Optional[str] = None,
                        agent_id: Optional[str] = None, details: Optional[str] = None) -> None:
         """记录操作日志到 operation_log"""
+
         conn = self._get_conn()
         cursor = conn.cursor()
         cursor.execute(
@@ -168,11 +180,13 @@ class AgentFS:
         conn.close()
 
     def _checksum(self, content: bytes) -> str:
+        """内部辅助方法 ``_checksum``；参数与返回值见类型注解。"""
         return hashlib.sha256(content).hexdigest()
 
     def write(self, path: str, content: bytes, agent_id: Optional[str] = None,
               mode: str = "644", owner: str = "agent") -> None:
         """写入文件"""
+
         path = self._normalize_path(path)
         self._validate_path(path)
 
@@ -205,11 +219,12 @@ class AgentFS:
                 (path, content, checksum),
             )
         cursor.execute(
-            """
+        """
+
             INSERT OR REPLACE INTO metadata
             (path, size, mode, owner, agent_id, created_at, updated_at, checksum)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
+        """,
             (path, len(content), mode, owner, agent_id, created_at, now, checksum),
         )
 
@@ -220,6 +235,7 @@ class AgentFS:
 
     def read(self, path: str) -> bytes:
         """读取文件"""
+
         path = self._normalize_path(path)
         self._validate_path(path)
 
@@ -237,6 +253,7 @@ class AgentFS:
 
     def delete(self, path: str, agent_id: Optional[str] = None) -> None:
         """删除文件"""
+
         path = self._normalize_path(path)
         self._validate_path(path)
 
@@ -251,6 +268,7 @@ class AgentFS:
 
     def ls(self, directory: str = "/") -> List[FileStat]:
         """列出目录下的文件（POSIX-like ls）"""
+
         directory = self._normalize_path(directory)
         if directory != "/":
             self._validate_path(directory)
@@ -258,10 +276,10 @@ class AgentFS:
         conn = self._get_conn()
         cursor = conn.cursor()
         cursor.execute(
-            """
+        """
             SELECT path, size, mode, owner, agent_id, created_at, updated_at, checksum
             FROM metadata WHERE path LIKE ?
-            """,
+        """,
             (directory + "%",),
         )
         rows = cursor.fetchall()
@@ -283,16 +301,17 @@ class AgentFS:
 
     def stat(self, path: str) -> FileStat:
         """获取文件元数据（POSIX-like stat）"""
+
         path = self._normalize_path(path)
         self._validate_path(path)
 
         conn = self._get_conn()
         cursor = conn.cursor()
         cursor.execute(
-            """
+        """
             SELECT path, size, mode, owner, agent_id, created_at, updated_at, checksum
             FROM metadata WHERE path = ?
-            """,
+        """,
             (path,),
         )
         row = cursor.fetchone()
@@ -314,6 +333,7 @@ class AgentFS:
 
     def exists(self, path: str) -> bool:
         """检查文件是否存在"""
+
         path = self._normalize_path(path)
         if path != "/":
             try:
@@ -330,6 +350,7 @@ class AgentFS:
 
     def list_files(self, directory: str = "/") -> List[Dict[str, Any]]:
         """列出目录下的文件（兼容旧接口，返回字典列表）"""
+
         stats = self.ls(directory)
         return [
             {
@@ -343,6 +364,7 @@ class AgentFS:
 
     def checkpoint(self) -> None:
         """触发 SQLite Checkpoint，合并 WAL 日志"""
+
         conn = self._get_conn()
         conn.execute("PRAGMA wal_checkpoint(FULL)")
         conn.close()
@@ -355,6 +377,7 @@ class AgentFS:
         Returns:
             Commit ID
         """
+
         self.checkpoint()
 
         # 将 db 文件复制到 git 仓库
@@ -393,6 +416,7 @@ class AgentFS:
         """
         按 Commit ID 回滚到历史状态
         """
+
         repo = Repo(self.git_repo_path)
         try:
             commit = repo.commit(commit_id)
@@ -417,6 +441,7 @@ class AgentFS:
         Returns:
             变更列表
         """
+
         repo = Repo(self.git_repo_path)
         diff = repo.commit(commit_a).diff(commit_b)
         changes = []

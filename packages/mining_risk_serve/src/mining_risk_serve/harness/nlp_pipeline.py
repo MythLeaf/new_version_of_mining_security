@@ -67,6 +67,7 @@ RULE_DICT = {
 
 class BertBiLSTMCRF(nn.Module):
     """
+
     BERT-BiLSTM-CRF 模型
     """
 
@@ -77,6 +78,7 @@ class BertBiLSTMCRF(nn.Module):
         num_labels: int = 9,
         dropout: float = 0.3,
     ):
+        """初始化 BertBiLSTMCRF；参数含义见类型注解与类文档。"""
         super().__init__()
         self.bert = BertModel.from_pretrained(bert_model_name)
         self.dropout = nn.Dropout(dropout)
@@ -96,6 +98,18 @@ class BertBiLSTMCRF(nn.Module):
         attention_mask: torch.Tensor,
         labels: Optional[torch.Tensor] = None,
     ) -> Dict[str, torch.Tensor]:
+        """
+        forward。
+
+        Args:
+                input_ids (torch.Tensor): 参数 ``input_ids``。
+                attention_mask (torch.Tensor): 参数 ``attention_mask``。
+                labels (Optional[torch.Tensor]): 参数 ``labels``。
+
+        Returns:
+                (Dict[str, torch.Tensor]): 函数返回值。
+        """
+
         bert_out = self.bert(input_ids=input_ids, attention_mask=attention_mask)
         sequence_output = bert_out.last_hidden_state
         sequence_output = self.dropout(sequence_output)
@@ -119,12 +133,14 @@ class NERPipeline:
     支持模型推理 + 规则回退
     """
 
+
     def __init__(
         self,
         model_path: Optional[str] = None,
         bert_model_name: str = "bert-base-chinese",
         device: Optional[str] = None,
     ):
+        """初始化 NERPipeline；参数含义见类型注解与类文档。"""
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         self.model_path = model_path
         self.bert_model_name = bert_model_name
@@ -134,6 +150,7 @@ class NERPipeline:
 
     def _load_model(self) -> None:
         """尝试加载训练好的模型"""
+
         if self.model_path and os.path.exists(self.model_path):
             try:
                 self.tokenizer = BertTokenizer.from_pretrained(self.bert_model_name)
@@ -152,6 +169,7 @@ class NERPipeline:
 
     def _rule_extract(self, text: str) -> List[Dict]:
         """基于规则的实体抽取（回退模式）"""
+
         entities = []
         for label_type, keywords in RULE_DICT.items():
             for kw in keywords:
@@ -177,6 +195,7 @@ class NERPipeline:
 
     def _model_extract(self, text: str) -> List[Dict]:
         """基于模型的实体抽取"""
+
         if self.model is None or self.tokenizer is None:
             return []
         
@@ -241,6 +260,7 @@ class NERPipeline:
         Returns:
             List[Dict]，每个元素包含 text, label, start, end, source
         """
+
         if not text or not text.strip():
             return []
         
@@ -257,6 +277,7 @@ class NERPipeline:
 
     def extract_entities_batch(self, texts: List[str]) -> List[List[Dict]]:
         """批量抽取实体"""
+
         return [self.extract_entities(t) for t in texts]
 
 
@@ -271,6 +292,7 @@ def bio_decode(tokens: List[str], labels: List[str]) -> List[Dict]:
     Returns:
         实体列表
     """
+
     entities = []
     current = None
     for token, label in zip(tokens, labels):
@@ -300,6 +322,7 @@ def bio_encode(tokens: List[str], entities: List[Dict]) -> List[str]:
     Returns:
         BIO 标签列表
     """
+
     # 简单实现：假设 tokens 是字符列表，按完全匹配标注
     labels = ["O"] * len(tokens)
     text = "".join(tokens)

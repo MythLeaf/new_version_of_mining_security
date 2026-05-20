@@ -15,6 +15,7 @@ logger = get_logger(__name__)
 
 class RecursiveKnowledgeSynthesizer:
     """
+
     RKS：人工审核驳回后的知识提取与归档
     """
 
@@ -23,6 +24,7 @@ class RecursiveKnowledgeSynthesizer:
         kb_manager: Optional[KnowledgeBaseManager] = None,
         agentfs: Optional[AgentFS] = None,
     ):
+        """初始化 RecursiveKnowledgeSynthesizer；参数含义见类型注解与类文档。"""
         self.kb = kb_manager or KnowledgeBaseManager(agentfs=agentfs)
 
     def synthesize_rejection(
@@ -46,6 +48,7 @@ class RecursiveKnowledgeSynthesizer:
         Returns:
             {quadruple, commit_id, files_updated}
         """
+
         quadruple = {
             "问题场景": scenario,
             "错误决策": wrong_decision,
@@ -80,6 +83,7 @@ class RecursiveKnowledgeSynthesizer:
 
     def _format_case_entry(self, q: Dict[str, Any]) -> str:
         """格式化为 类似事故处理案例.md 的条目"""
+
         ts = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(q["timestamp"]))
         return (
             f"\n\n## 案例：{q['问题场景']}\n"
@@ -91,6 +95,7 @@ class RecursiveKnowledgeSynthesizer:
 
     def _format_history_entry(self, q: Dict[str, Any]) -> str:
         """格式化为 预警历史经验与短期记忆摘要.md 的表格行"""
+
         ts = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(q["timestamp"]))
         record_id = f"RKS-{int(q['timestamp'])}"
         return (

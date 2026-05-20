@@ -35,7 +35,10 @@ class ResourceRegistry:
       default_scenario_id: 默认场景 ID。
   """
 
+
   def __init__(self) -> None:
+    """初始化资源槽位；实际加载在首次 ``get_*`` 调用时进行。"""
+
     self._model: Optional[StackingRiskModel] = None
     self._pipeline: Optional[FeatureEngineeringPipeline] = None
     self._memory: Optional[HybridMemoryManager] = None
@@ -53,6 +56,7 @@ class ResourceRegistry:
         FileNotFoundError: 配置的模型路径不存在。
         RuntimeError: 模型文件存在但反序列化失败，单例会被重置以便下次重试。
     """
+
     if self._model is None:
       config = get_config()
       model_path = config.model.stacking.model_path
@@ -74,6 +78,7 @@ class ResourceRegistry:
         FileNotFoundError: 配置的流水线路径不存在。
         RuntimeError: 文件存在但反序列化失败。
     """
+
     if self._pipeline is None:
       config = get_config()
       pipeline_path = config.model.stacking.pipeline_path
@@ -90,12 +95,14 @@ class ResourceRegistry:
 
   def get_memory(self) -> HybridMemoryManager:
     """获取混合记忆管理器单例。"""
+
     if self._memory is None:
       self._memory = HybridMemoryManager()
     return self._memory
 
   def get_validator(self) -> ValidationPipeline:
     """获取决策校验流水线单例。"""
+
     if self._validator is None:
       self._validator = ValidationPipeline()
     return self._validator
@@ -109,6 +116,7 @@ class ResourceRegistry:
     Returns:
         对应场景的 ``DecisionWorkflow`` 实例。
     """
+
     if scenario_id not in self._workflows:
       self._workflows[scenario_id] = DecisionWorkflow(scenario_id=scenario_id)
     return self._workflows[scenario_id]
@@ -119,6 +127,7 @@ class ResourceRegistry:
     Args:
         scenario_id: 新的默认场景。
     """
+
     self.default_scenario_id = scenario_id
 
 

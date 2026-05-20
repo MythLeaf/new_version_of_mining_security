@@ -15,6 +15,12 @@ _PACKAGE_NAMES = (
 
 
 def setup_project_paths() -> Path:
+    """
+    setup project paths。
+
+        Returns:
+            (Path): 函数返回值。
+    """
     project_root = Path(__file__).resolve().parent.parent
     os.environ.setdefault("MINING_PROJECT_ROOT", str(project_root))
     for name in _PACKAGE_NAMES:

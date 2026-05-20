@@ -20,6 +20,7 @@ class ErrorDetail(BaseModel):
       field: 可选，出错的请求字段名。
   """
 
+
   code: str = Field(..., description="错误码")
   message: str = Field(..., description="错误说明")
   field: Optional[str] = Field(default=None, description="关联字段")
@@ -38,6 +39,7 @@ class ApiResponse(BaseModel, Generic[T]):
       message: 可选的补充说明。
   """
 
+
   success: bool = Field(..., description="是否成功")
   data: Optional[T] = Field(default=None, description="业务数据")
   error: Optional[ErrorDetail] = Field(default=None, description="错误信息")
@@ -54,6 +56,7 @@ class PaginatedData(BaseModel, Generic[T]):
       limit: 每页条数上限。
   """
 
+
   total: int = Field(..., ge=0, description="总记录数")
   items: List[T] = Field(default_factory=list, description="当前页数据")
   offset: int = Field(default=0, ge=0, description="偏移量")
@@ -63,11 +66,13 @@ class PaginatedData(BaseModel, Generic[T]):
 class PaginatedResponse(ApiResponse[PaginatedData[T]], Generic[T]):
   """分页列表的统一响应信封。"""
 
+
   pass
 
 
 class HealthPayload(BaseModel):
   """健康检查载荷。"""
+
 
   status: str = Field(..., description="服务状态，如 healthy")
   version: str = Field(default="", description="应用版本号")

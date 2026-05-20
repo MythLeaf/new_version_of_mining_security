@@ -1,6 +1,8 @@
 """
-日志工具模块
-统一日志格式与输出策?"""
+日志工具模块。
+
+统一控制台与轮转文件输出的日志格式、级别与路径策略。
+"""
 
 import logging
 import logging.handlers
@@ -12,14 +14,21 @@ from mining_risk_common.utils.config import get_config
 
 
 def get_logger(name: str, level: Optional[str] = None) -> logging.Logger:
-    """
-    获取配置好的日志记录?    
+    """获取已配置的日志记录器。
+
+    首次调用时为该 ``name`` 挂载控制台 Handler；若配置中指定了日志文件，
+    则额外挂载按大小轮转的 ``RotatingFileHandler``。重复调用同一 ``name`` 时
+    直接返回已有实例，避免重复添加 Handler。
+
     Args:
-        name: 日志记录器名?        level: 日志级别，默认从配置读取
-    
+        name (str): 日志记录器名称，通常传入 ``__name__``。
+        level (Optional[str]): 日志级别字符串（如 ``INFO``）；未指定时从
+            ``config.logging.level`` 读取。
+
     Returns:
-        配置好的 Logger 实例
+        logging.Logger: 已设置级别与 Handler 的记录器实例。
     """
+
     config = get_config()
     log_level = level or config.logging.level
     log_format = config.logging.format

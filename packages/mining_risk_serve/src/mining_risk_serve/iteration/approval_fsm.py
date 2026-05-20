@@ -20,6 +20,10 @@ logger = get_logger(__name__)
 
 
 class ApprovalStatus(Enum):
+    """
+
+    ApprovalStatus 类。
+    """
     PENDING_REVIEW = "PENDING_REVIEW"
     SECURITY_APPROVED = "SECURITY_APPROVED"
     TECH_APPROVED = "TECH_APPROVED"
@@ -31,6 +35,10 @@ class ApprovalStatus(Enum):
 
 @dataclass
 class ApprovalRecord:
+    """
+
+    ApprovalRecord 类。
+    """
     record_id: str
     model_version: str
     status: ApprovalStatus
@@ -47,10 +55,12 @@ class ApprovalRecord:
 
 class ApprovalFSM:
     """
+
     两级终审状态机
     """
 
     def __init__(self, db_path: Optional[str] = None):
+        """初始化 ApprovalFSM；参数含义见类型注解与类文档。"""
         config = get_config()
         iteration_cfg = getattr(config, "iteration", None)
         if iteration_cfg is None:
@@ -68,6 +78,7 @@ class ApprovalFSM:
         self.agentfs = AgentFS()
 
     def _ensure_table(self) -> None:
+        """内部辅助方法 ``_ensure_table``；参数与返回值见类型注解。"""
         os.makedirs(os.path.dirname(self.db_path) or ".", exist_ok=True)
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
@@ -85,12 +96,14 @@ class ApprovalFSM:
         conn.close()
 
     def _get_conn(self) -> sqlite3.Connection:
+        """内部辅助方法 ``_get_conn``；参数与返回值见类型注解。"""
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         return conn
 
     def create_record(self, record_id: str, model_version: str) -> ApprovalRecord:
         """创建审批记录"""
+
         record = ApprovalRecord(
             record_id=record_id,
             model_version=model_version,
@@ -102,6 +115,7 @@ class ApprovalFSM:
         return record
 
     def _save_record(self, record: ApprovalRecord) -> None:
+        """内部辅助方法 ``_save_record``；参数与返回值见类型注解。"""
         conn = self._get_conn()
         cursor = conn.cursor()
         data = json.dumps({
@@ -116,11 +130,11 @@ class ApprovalFSM:
             "created_at": record.created_at,
         }, ensure_ascii=False)
         cursor.execute(
-            """
+        """
             INSERT OR REPLACE INTO approval_records
             (record_id, model_version, status, data, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?)
-            """,
+        """,
             (record.record_id, record.model_version, record.status.value, data, record.created_at, time.time()),
         )
         conn.commit()
@@ -128,6 +142,7 @@ class ApprovalFSM:
 
     def load_record(self, record_id: str) -> Optional[ApprovalRecord]:
         """加载审批记录"""
+
         conn = self._get_conn()
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM approval_records WHERE record_id = ?", (record_id,))
@@ -161,6 +176,7 @@ class ApprovalFSM:
         提交审批结果
         approver_role: 'security' 或 'tech'
         """
+
         record = self.load_record(record_id)
         if record is None:
             raise ValueError(f"审批记录不存在: {record_id}")
@@ -207,6 +223,7 @@ class ApprovalFSM:
 
     def reject(self, record_id: str, approver_name: str, reason: str) -> ApprovalRecord:
         """拒绝审批"""
+
         record = self.load_record(record_id)
         if record is None:
             raise ValueError(f"审批记录不存在: {record_id}")
@@ -229,6 +246,7 @@ class ApprovalFSM:
 
     def promote_to_staging(self, record_id: str) -> ApprovalRecord:
         """推进到 STAGING 状态"""
+
         record = self.load_record(record_id)
         if record is None:
             raise ValueError(f"审批记录不存在: {record_id}")
@@ -248,6 +266,7 @@ class ApprovalFSM:
 
     def promote_to_production(self, record_id: str) -> ApprovalRecord:
         """推进到 PRODUCTION 状态"""
+
         record = self.load_record(record_id)
         if record is None:
             raise ValueError(f"审批记录不存在: {record_id}")
@@ -267,6 +286,7 @@ class ApprovalFSM:
 
     def archive(self, record_id: str) -> ApprovalRecord:
         """归档"""
+
         record = self.load_record(record_id)
         if record is None:
             raise ValueError(f"审批记录不存在: {record_id}")
@@ -283,6 +303,7 @@ class ApprovalFSM:
 
     def _notify(self, title: str, message: str) -> None:
         """审批节点变更时发送通知（邮件/Webhook）"""
+
         # 邮件通知
         try:
             self._send_email(title, message)
@@ -297,6 +318,7 @@ class ApprovalFSM:
 
     def _send_email(self, title: str, message: str) -> None:
         """发送邮件通知"""
+
         import smtplib
         from email.mime.text import MIMEText
 
@@ -330,6 +352,7 @@ class ApprovalFSM:
 
     def _send_webhook(self, title: str, message: str) -> None:
         """发送 Webhook 通知"""
+
         config = get_config()
         iteration_cfg = getattr(config, "iteration", None)
         webhook_url = iteration_cfg.webhook_url if iteration_cfg else None
@@ -349,6 +372,7 @@ class ApprovalFSM:
 
     def _log_to_agentfs(self, operation: str, record: ApprovalRecord) -> None:
         """全流程写入 AgentFS operation_log"""
+
         try:
             details = json.dumps({
                 "record_id": record.record_id,

@@ -43,6 +43,7 @@ GOVERNMENT_DOMAINS = [
 
 class RegulationCrawler:
     """
+
     法规爬虫类
     
     用法：
@@ -57,6 +58,7 @@ class RegulationCrawler:
         user_agents: Optional[List[str]] = None,
         timeout: int = 30,
     ):
+        """初始化 RegulationCrawler；参数含义见类型注解与类文档。"""
         self.delay = delay
         self.timeout = timeout
         self.user_agents = user_agents or DEFAULT_USER_AGENTS
@@ -72,6 +74,7 @@ class RegulationCrawler:
 
     def _get_headers(self) -> Dict[str, str]:
         """轮换 User-Agent"""
+
         ua = self.user_agents[self._ua_index % len(self.user_agents)]
         self._ua_index += 1
         return {
@@ -82,6 +85,7 @@ class RegulationCrawler:
 
     def _is_government_domain(self, url: str) -> bool:
         """检查是否为允许的政府域名"""
+
         parsed = urlparse(url)
         domain = parsed.netloc.lower()
         # 允许所有 .gov.cn 域名
@@ -91,6 +95,7 @@ class RegulationCrawler:
 
     def _check_robots_txt(self, url: str) -> bool:
         """检查 robots.txt 是否允许爬取"""
+
         parsed = urlparse(url)
         robots_url = f"{parsed.scheme}://{parsed.netloc}/robots.txt"
         try:
@@ -104,6 +109,7 @@ class RegulationCrawler:
 
     def _fetch(self, url: str) -> Optional[str]:
         """发送 HTTP 请求并返回 HTML 文本"""
+
         try:
             headers = self._get_headers()
             resp = self.session.get(url, headers=headers, timeout=self.timeout)
@@ -118,6 +124,7 @@ class RegulationCrawler:
 
     def _extract_text(self, html: str, url: str) -> Dict:
         """从 HTML 中提取标题和正文"""
+
         soup = BeautifulSoup(html, "html.parser")
 
         # 尝试提取标题
@@ -154,6 +161,7 @@ class RegulationCrawler:
 
     def _save_markdown(self, data: Dict) -> str:
         """将爬取结果保存为 Markdown 文件"""
+
         parsed = urlparse(data["url"])
         source = parsed.netloc.replace(".", "_")
         date_str = datetime.now().strftime("%Y%m%d")
@@ -180,6 +188,7 @@ class RegulationCrawler:
 
     def _extract_links(self, html: str, base_url: str) -> List[str]:
         """从页面中提取同域链接"""
+
         soup = BeautifulSoup(html, "html.parser")
         links = []
         for a in soup.find_all("a", href=True):
@@ -204,6 +213,7 @@ class RegulationCrawler:
         Returns:
             爬取结果列表，每个元素为 {"url", "title", "content", "crawl_time", "filepath"}
         """
+
         if not seed_urls:
             logger.warning("seed_urls 为空，无页面可爬取")
             return []
@@ -257,6 +267,7 @@ class Crawler:
     爬虫兼容接口（与任务描述中的类名保持一致）
     """
 
+
     @staticmethod
     def crawl_regulations(
         seed_urls: List[str],
@@ -266,5 +277,6 @@ class Crawler:
         """
         静态便捷方法，直接调用 RegulationCrawler
         """
+
         crawler = RegulationCrawler(output_dir=output_dir)
         return crawler.crawl_regulations(seed_urls=seed_urls, max_pages=max_pages)

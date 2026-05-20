@@ -19,6 +19,7 @@ logger = get_logger(__name__)
 
 class DriftAnalyzer:
     """
+
     Drift 分析器
     对比新旧模型权重、元学习器权重、预处理 Pipeline 逻辑变更
     """
@@ -30,6 +31,7 @@ class DriftAnalyzer:
         old_pipeline_path: Optional[str] = None,
         new_pipeline_path: Optional[str] = None,
     ):
+        """初始化 DriftAnalyzer；参数含义见类型注解与类文档。"""
         config = get_config()
         self.old_model_path = old_model_path or config.model.stacking.model_path
         self.new_model_path = new_model_path
@@ -38,16 +40,19 @@ class DriftAnalyzer:
 
     def _load_model(self, path: str) -> Dict[str, Any]:
         """加载模型字典"""
+
         return joblib.load(path)
 
     def _load_pipeline(self, path: str) -> Any:
         """加载预处理 Pipeline"""
+
         return joblib.load(path)
 
     def analyze_model_weights(self) -> Dict:
         """
         分析模型权重差异
         """
+
         if not os.path.exists(self.old_model_path) or not os.path.exists(self.new_model_path):
             return {"error": "模型路径不存在"}
 
@@ -99,6 +104,7 @@ class DriftAnalyzer:
         """
         分析预处理 Pipeline 逻辑变更
         """
+
         if not os.path.exists(self.old_pipeline_path) or not os.path.exists(self.new_pipeline_path):
             return {"error": "Pipeline 路径不存在"}
 
@@ -128,6 +134,7 @@ class DriftAnalyzer:
         """
         执行完整 Drift 分析，输出 Markdown 报告
         """
+
         logger.info("===== Drift 分析开始 =====")
 
         model_drift = self.analyze_model_weights()

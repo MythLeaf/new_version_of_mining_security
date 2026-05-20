@@ -22,6 +22,7 @@ F1_THRESHOLD = 0.85
 @dataclass
 class TriggerSignal:
     """触发信号"""
+
     triggered: bool
     reason: Optional[str] = None
     details: Optional[Dict] = None
@@ -35,12 +36,14 @@ class ModelMonitor:
     - 输出是否应该重训练
     """
 
+
     def __init__(
         self,
         db_path: Optional[str] = None,
         sample_threshold: int = SAMPLE_THRESHOLD,
         f1_threshold: float = F1_THRESHOLD,
     ):
+        """初始化 ModelMonitor；参数含义见类型注解与类文档。"""
         config = get_config()
         # 使用 audit.db 作为默认监控数据库（兼容现有系统）
         self.db_path = db_path or config.audit.db_path
@@ -49,12 +52,14 @@ class ModelMonitor:
         self._ensure_tables()
 
     def _get_conn(self) -> sqlite3.Connection:
+        """内部辅助方法 ``_get_conn``；参数与返回值见类型注解。"""
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         return conn
 
     def _ensure_tables(self) -> None:
         """确保监控所需表存在"""
+
         conn = self._get_conn()
         cursor = conn.cursor()
 
@@ -71,6 +76,7 @@ class ModelMonitor:
 
         # 性能追踪表：记录每次模型评估指标
         cursor.execute("""
+
             CREATE TABLE IF NOT EXISTS performance_tracking (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 eval_time REAL NOT NULL,
@@ -90,6 +96,7 @@ class ModelMonitor:
 
     def record_new_samples(self, batch_size: int, source: str = "api_upload") -> int:
         """
+
         记录新增样本批次，返回当前累计样本数
         """
         conn = self._get_conn()
@@ -122,14 +129,15 @@ class ModelMonitor:
         dataset: str = "validation",
     ) -> None:
         """记录模型性能指标"""
+
         conn = self._get_conn()
         cursor = conn.cursor()
         cursor.execute(
-            """
+        """
             INSERT INTO performance_tracking
             (eval_time, model_version, accuracy, precision, recall, f1_score, auc, dataset)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
+        """,
             (time.time(), model_version, accuracy, precision, recall, f1_score, auc, dataset),
         )
         conn.commit()
@@ -138,6 +146,7 @@ class ModelMonitor:
 
     def get_cumulative_sample_count(self) -> int:
         """获取累计新增样本数"""
+
         conn = self._get_conn()
         cursor = conn.cursor()
         cursor.execute("SELECT cumulative_count FROM sample_tracking ORDER BY id DESC LIMIT 1")
@@ -147,6 +156,7 @@ class ModelMonitor:
 
     def get_recent_f1_scores(self, window_days: int = 7) -> List[float]:
         """获取近期 F1 分数列表"""
+
         since = time.time() - window_days * 86400
         conn = self._get_conn()
         cursor = conn.cursor()
@@ -160,6 +170,7 @@ class ModelMonitor:
 
     def check_sample_threshold(self) -> TriggerSignal:
         """检查样本数阈值"""
+
         count = self.get_cumulative_sample_count()
         if count > self.sample_threshold:
             return TriggerSignal(
@@ -171,6 +182,7 @@ class ModelMonitor:
 
     def check_performance_threshold(self) -> TriggerSignal:
         """检查性能阈值"""
+
         f1_scores = self.get_recent_f1_scores(window_days=7)
         if not f1_scores:
             return TriggerSignal(triggered=False)
@@ -191,6 +203,7 @@ class ModelMonitor:
         Returns:
             (should_retrain, trigger_reason, details)
         """
+
         sample_check = self.check_sample_threshold()
         if sample_check.triggered:
             logger.warning(f"触发重训练信号: {sample_check.reason}")
@@ -205,6 +218,7 @@ class ModelMonitor:
 
     def get_monitoring_summary(self) -> Dict:
         """获取监控摘要"""
+
         count = self.get_cumulative_sample_count()
         f1_scores = self.get_recent_f1_scores(window_days=7)
         recent_f1 = round(sum(f1_scores) / len(f1_scores), 4) if f1_scores else None

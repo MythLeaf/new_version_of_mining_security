@@ -18,6 +18,7 @@ import {
   deleteShortTermMemory,
 } from "../api/client";
 import ReactECharts from "echarts-for-react";
+import SubTabs from "../components/SubTabs";
 
 const PRIO_COLORS: Record<string, string> = { P0: "#ef4444", P1: "#f97316", P2: "#3b82f6", P3: "#10b981" };
 const PRIO_BG: Record<string, string> = { P0: "rgba(239,68,68,0.15)", P1: "rgba(249,115,22,0.15)", P2: "rgba(59,130,246,0.15)", P3: "rgba(16,185,129,0.15)" };
@@ -149,39 +150,48 @@ function ExportDialog({ memoryType, onClose }: { memoryType: string; onClose: ()
   );
 }
 
+const KNOWLEDGE_SECTIONS = [
+  { id: "overview", label: "总览仪表盘" },
+  { id: "data", label: "数据管理" },
+  { id: "risk", label: "风险评估" },
+  { id: "import", label: "导入预测" },
+  { id: "experience", label: "预警经验" },
+  { id: "short", label: "短期记忆" },
+  { id: "long", label: "长期记忆" },
+  { id: "approval", label: "审批管理" },
+  { id: "audit", label: "审计日志" },
+] as const;
+
+type KnowledgeSection = (typeof KNOWLEDGE_SECTIONS)[number]["id"];
+
 export default function KnowledgeMemoryPage() {
-  const [activeSection, setActiveSection] = useState<"overview" | "data" | "risk" | "import" | "short" | "long" | "experience" | "approval" | "audit">("overview");
+  const [activeSection, setActiveSection] = useState<KnowledgeSection>("overview");
 
   return (
     <div>
-      <div className="section-title">📚 预警经验管理系统</div>
-      <div className="sub-tab-bar">
-        {[
-          { key: "overview" as const, label: "📊 总览仪表盘" },
-          { key: "data" as const, label: "📊 数据管理" },
-          { key: "risk" as const, label: "🎯 风险评估" },
-          { key: "import" as const, label: "📥 导入预测" },
-          { key: "experience" as const, label: "⚡ 预警经验" },
-          { key: "short" as const, label: "🧠 短期记忆" },
-          { key: "long" as const, label: "💾 长期记忆" },
-          { key: "approval" as const, label: "📋 审批管理" },
-          { key: "audit" as const, label: "🔍 审计日志" },
-        ].map((t) => (
-          <button key={t.key} type="button" className={`sub-tab ${activeSection === t.key ? "active" : ""}`} onClick={() => setActiveSection(t.key)}>
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <div className="section-title">知识库与预警经验管理</div>
+      <SubTabs
+        tabs={[...KNOWLEDGE_SECTIONS]}
+        active={activeSection}
+        onChange={(id) => setActiveSection(id as KnowledgeSection)}
+        ariaLabel="知识库与记忆子模块"
+      />
       <div className="divider" />
-      {activeSection === "overview" && <OverviewDashboard />}
-      {activeSection === "data" && <DataManagementSection />}
-      {activeSection === "risk" && <RiskVisualizationSection />}
-      {activeSection === "import" && <ExcelImportSection />}
-      {activeSection === "experience" && <WarningExperienceSection />}
-      {activeSection === "short" && <ShortTermMemorySection />}
-      {activeSection === "long" && <LongTermMemorySection />}
-      {activeSection === "approval" && <ApprovalSection />}
-      {activeSection === "audit" && <AuditLogSection />}
+      <div
+        role="tabpanel"
+        id={`subtab-panel-${activeSection}`}
+        aria-labelledby={`subtab-${activeSection}`}
+      >
+        {activeSection === "overview" && <OverviewDashboard />}
+        {activeSection === "data" && <DataManagementSection />}
+        {activeSection === "risk" && <RiskVisualizationSection />}
+        {activeSection === "import" && <ExcelImportSection />}
+        {activeSection === "experience" && <WarningExperienceSection />}
+        {activeSection === "short" && <ShortTermMemorySection />}
+        {activeSection === "long" && <LongTermMemorySection />}
+        {activeSection === "approval" && <ApprovalSection />}
+        {activeSection === "audit" && <AuditLogSection />}
+      </div>
     </div>
   );
 }

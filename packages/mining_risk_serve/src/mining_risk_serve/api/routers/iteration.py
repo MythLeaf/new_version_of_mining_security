@@ -39,11 +39,19 @@ router = APIRouter()
 
 
 class TriggerRequest(BaseModel):
+    """
+
+    TriggerRequest 类。
+    """
     model_version: Optional[str] = None
     raw_data_path: Optional[str] = None
 
 
 class TriggerResponse(BaseModel):
+    """
+
+    TriggerResponse 类。
+    """
     status: str
     model_version: Optional[str] = None
     model_path: Optional[str] = None
@@ -65,6 +73,10 @@ _STATE_MAP = {
 
 
 class StatusResponse(BaseModel):
+    """
+
+    StatusResponse 类。
+    """
     current_state: str
     current_state_cn: str
     monitor_summary: Dict[str, Any]
@@ -75,18 +87,30 @@ class StatusResponse(BaseModel):
 
 
 class ApproveRequest(BaseModel):
+    """
+
+    ApproveRequest 类。
+    """
     record_id: str
     approver_role: str  # security 或 tech
     approver_name: str
 
 
 class ApproveResponse(BaseModel):
+    """
+
+    ApproveResponse 类。
+    """
     record_id: str
     status: str
     message: str
 
 
 class CanaryRequest(BaseModel):
+    """
+
+    CanaryRequest 类。
+    """
     model_version: str
     ratio: float
     operator: str = "api_user"
@@ -94,6 +118,10 @@ class CanaryRequest(BaseModel):
 
 
 class CanaryResponse(BaseModel):
+    """
+
+    CanaryResponse 类。
+    """
     model_version: str
     previous_ratio: float
     current_ratio: float
@@ -101,6 +129,10 @@ class CanaryResponse(BaseModel):
 
 
 class DemoBatchResponse(BaseModel):
+    """
+
+    DemoBatchResponse 类。
+    """
     metadata: Dict[str, Any]
     source: str
     record_count: int
@@ -109,6 +141,10 @@ class DemoBatchResponse(BaseModel):
 
 
 class DemoReplayResponse(BaseModel):
+    """
+
+    DemoReplayResponse 类。
+    """
     status: str
     retrain_required: bool
     blocked: bool
@@ -127,6 +163,10 @@ class DemoReplayResponse(BaseModel):
 
 
 class IterationRecordResponse(BaseModel):
+    """
+
+    IterationRecordResponse 类。
+    """
     iteration_id: str
     batch_id: str
     data_source: Dict[str, Any]
@@ -171,6 +211,10 @@ class IterationRecordResponse(BaseModel):
 
 
 class IterationTimelineResponse(BaseModel):
+    """
+
+    IterationTimelineResponse 类。
+    """
     iteration_id: str
     batch_id: str
     current_status: str
@@ -179,6 +223,10 @@ class IterationTimelineResponse(BaseModel):
 
 
 class UploadBatchResponse(BaseModel):
+    """
+
+    UploadBatchResponse 类。
+    """
     status: str
     batch_id: str
     original_filename: str
@@ -207,6 +255,10 @@ class UploadBatchResponse(BaseModel):
 
 
 class DemoResetResponse(BaseModel):
+    """
+
+    DemoResetResponse 类。
+    """
     status: str
     archived_iterations: int
     archived_runs: int
@@ -216,16 +268,28 @@ class DemoResetResponse(BaseModel):
 
 
 class DemoApprovalRequest(BaseModel):
+    """
+
+    DemoApprovalRequest 类。
+    """
     approver: str = "demo_reviewer"
     note: str = ""
 
 
 class DemoCanaryAdvanceRequest(BaseModel):
+    """
+
+    DemoCanaryAdvanceRequest 类。
+    """
     target_percentage: Optional[float] = None
     operator: str = "demo_operator"
 
 
 class DemoIterationStepResponse(BaseModel):
+    """
+
+    DemoIterationStepResponse 类。
+    """
     iteration_id: str
     batch_id: str
     current_status: str
@@ -237,11 +301,19 @@ class DemoIterationStepResponse(BaseModel):
 
 
 class IterationAuditResponse(BaseModel):
+    """
+
+    IterationAuditResponse 类。
+    """
     audit_archive_path: str
     audit: Dict[str, Any]
 
 
 class IterationReportsResponse(BaseModel):
+    """
+
+    IterationReportsResponse 类。
+    """
     iteration_id: str
     batch_id: str
     current_status: str
@@ -249,6 +321,10 @@ class IterationReportsResponse(BaseModel):
 
 
 class IterationReportResponse(BaseModel):
+    """
+
+    IterationReportResponse 类。
+    """
     iteration_id: str
     batch_id: str
     report_type: str
@@ -274,11 +350,13 @@ _F1_COLUMNS = ("recent_f1", "f1", "f1_score")
 
 
 def _safe_filename(filename: str) -> str:
+    """内部辅助方法 ``_safe_filename``；参数与返回值见类型注解。"""
     name = Path(filename or "upload.csv").name
     return re.sub(r"[^A-Za-z0-9._-]+", "_", name).strip("._") or "upload.csv"
 
 
 def _recent_f1_from_rows(rows: List[Dict[str, Any]], fallback: float) -> float:
+    """内部辅助方法 ``_recent_f1_from_rows``；参数与返回值见类型注解。"""
     values: List[float] = []
     for row in rows:
         for column in _F1_COLUMNS:
@@ -373,6 +451,7 @@ _RISK_NEGATIVE_VALUES = {
 
 
 def _decode_csv(content: bytes) -> tuple[str, str]:
+    """内部辅助方法 ``_decode_csv``；参数与返回值见类型注解。"""
     for encoding in ("utf-8-sig", "utf-8", "gb18030"):
         try:
             return content.decode(encoding), encoding
@@ -390,6 +469,7 @@ def _decode_csv(content: bytes) -> tuple[str, str]:
 
 
 def _risk_value(value: Any) -> bool:
+    """内部辅助方法 ``_risk_value``；参数与返回值见类型注解。"""
     text = str(value if value is not None else "").strip().lower()
     if text in _RISK_NEGATIVE_VALUES:
         return False
@@ -405,15 +485,27 @@ def _risk_value(value: Any) -> bool:
 
 
 def _normalize_column_name(value: Any) -> str:
+    """内部辅助方法 ``_normalize_column_name``；参数与返回值见类型注解。"""
     return re.sub(r"\s+", "", str(value or "").strip().lstrip("\ufeff")).lower()
 
 
 def _is_placeholder_header(columns: List[str]) -> bool:
+    """内部辅助方法 ``_is_placeholder_header``；参数与返回值见类型注解。"""
     usable = [column.strip() for column in columns if column and column.strip()]
     return bool(usable) and all(re.fullmatch(r"(?i)column\d+", column) for column in usable)
 
 
 def _deduplicate_columns(columns: List[str]) -> List[str]:
+    """
+            重复列名追加 __dupN 后缀。
+        
+        Args:
+                columns (Sequence[object]): 列名序列。
+                source (str): 日志用来源描述。
+        
+        Returns:
+                List[str]: 去重后列名。
+        """
     seen: Dict[str, int] = {}
     result: List[str] = []
     for index, raw in enumerate(columns, start=1):
@@ -425,6 +517,7 @@ def _deduplicate_columns(columns: List[str]) -> List[str]:
 
 
 def _find_risk_column(columns: List[str]) -> tuple[Optional[str], str]:
+    """内部辅助方法 ``_find_risk_column``；参数与返回值见类型注解。"""
     normalized_to_original = {_normalize_column_name(column): column for column in columns}
     for column in _CANONICAL_RISK_COLUMNS:
         normalized = _normalize_column_name(column)
@@ -443,6 +536,16 @@ def _csv_error(
     detected_columns: Optional[List[str]] = None,
     header_row_index: Optional[int] = None,
 ) -> HTTPException:
+    """构造带列检测信息的 CSV 解析错误 HTTP 400 响应。
+
+    Args:
+        message (str): 面向用户的错误说明。
+        detected_columns (Optional[List[str]]): 检测到的表头列名。
+        header_row_index (Optional[int]): 识别为表头的行号。
+
+    Returns:
+        HTTPException: status_code=400，detail 含建议列名等字段。
+    """
     return HTTPException(
         status_code=400,
         detail={
@@ -455,6 +558,7 @@ def _csv_error(
 
 
 def _read_uploaded_csv(content: bytes, *, dataset_kind: str) -> Dict[str, Any]:
+    """内部辅助方法 ``_read_uploaded_csv``；参数与返回值见类型注解。"""
     decoded, detected_encoding = _decode_csv(content)
     reader = csv.reader(io.StringIO(decoded))
     raw_rows = [row for row in reader if any(str(cell).strip() for cell in row)]
@@ -537,10 +641,17 @@ def _read_uploaded_csv(content: bytes, *, dataset_kind: str) -> Dict[str, Any]:
 
 
 def _demo_runner() -> DemoIterationRunner:
+    """构造演示模式模型迭代运行器（绑定演示回放服务）。
+
+    Returns:
+        DemoIterationRunner: 用于 demo 场景的迭代执行器实例。
+    """
+
     return DemoIterationRunner(replay_service=DemoReplayService())
 
 
 def _sync_iteration_state(iteration: Dict[str, Any]) -> None:
+    """内部辅助方法 ``_sync_iteration_state``；参数与返回值见类型注解。"""
     current_status = iteration.get("current_status") or "IDLE"
     _iteration_state["state"] = current_status
     _iteration_state["current_model_version"] = iteration.get("model_version")
@@ -559,6 +670,7 @@ def _sync_iteration_state(iteration: Dict[str, Any]) -> None:
 
 
 def _handle_demo_error(error: DemoIterationError) -> None:
+    """内部辅助方法 ``_handle_demo_error``；参数与返回值见类型注解。"""
     if error.record is not None:
         _sync_iteration_state(error.record.to_dict())
     raise HTTPException(status_code=error.status_code, detail=str(error))
@@ -574,6 +686,7 @@ async def get_data_source() -> Dict[str, Any]:
     """
     查询当前模型迭代数据源。
     """
+
     service = DemoReplayService()
     return service.data_source.describe()
 
@@ -583,6 +696,7 @@ async def list_demo_batches() -> List[Dict[str, Any]]:
     """
     列出 datasets/demo 中的演示回放批次。
     """
+
     service = DemoReplayService()
     return service.list_batches()
 
@@ -592,6 +706,7 @@ async def load_demo_batch(batch_id: str) -> DemoBatchResponse:
     """
     加载某个演示批次，不触发训练。
     """
+
     try:
         batch = DemoReplayService().load_batch(batch_id)
         payload = batch.to_dict(include_records=True)
@@ -605,6 +720,7 @@ async def replay_demo_batch(batch_id: str) -> DemoReplayResponse:
     """
     回放演示批次，写入后端状态、报告与可追踪记录。
     """
+
     try:
         service = DemoReplayService()
         report = service.replay_batch(batch_id)
@@ -672,6 +788,7 @@ async def enhanced_upload_iteration_batch(
     - public_accident: 公开新增事故数据，无标签字段也允许上传，每行默认视为新增风险历史样本；
     - manual_labeled: 手动标注 CSV，必须包含明确标签字段。
     """
+
     filename = file.filename or "upload.csv"
     normalized_kind = (dataset_kind or "auto").strip().lower()
     if normalized_kind not in _DATASET_KINDS:
@@ -829,6 +946,7 @@ async def upload_iteration_batch(file: UploadFile = File(...)) -> UploadBatchRes
     目前最小实现支持 CSV；Excel 文件会返回清晰错误，避免前端误判为空状态。
     CSV 必须包含 risk_label、label 或 risk_level 字段，可选 recent_f1/f1/f1_score。
     """
+
     return await enhanced_upload_iteration_batch(
         file=file,
         dataset_kind="auto",
@@ -917,6 +1035,7 @@ async def reset_demo_iteration_state() -> DemoResetResponse:
     """
     重置路演状态：归档当前演示 IterationRecord 和 replay run，不删除原始 demo batch 文件。
     """
+
     service = DemoReplayService()
     result = service.reset_demo_state()
     _iteration_state.update(
@@ -936,6 +1055,7 @@ async def get_latest_iteration() -> IterationRecordResponse:
     """
     查询最近一次数据入库后的统一迭代状态。
     """
+
     record = DemoReplayService().latest_iteration_record()
     if record is None:
         raise HTTPException(status_code=404, detail="iteration record not found")
@@ -947,6 +1067,7 @@ async def get_latest_iteration_for_batch(batch_id: str) -> IterationRecordRespon
     """
     查询某个批次最近一次加载产生的迭代状态。
     """
+
     record = DemoReplayService().latest_iteration_for_batch(batch_id)
     if record is None:
         raise HTTPException(status_code=404, detail=f"iteration record not found for batch: {batch_id}")
@@ -958,6 +1079,7 @@ async def get_iteration_timeline(iteration_id: str) -> IterationTimelineResponse
     """
     查询某次迭代的时间线。
     """
+
     timeline = DemoReplayService().get_iteration_timeline(iteration_id)
     if timeline is None:
         raise HTTPException(status_code=404, detail=f"iteration record not found: {iteration_id}")
@@ -965,12 +1087,23 @@ async def get_iteration_timeline(iteration_id: str) -> IterationTimelineResponse
 
 
 def _demo_step_response(result: Dict[str, Any]) -> DemoIterationStepResponse:
+    """内部辅助方法 ``_demo_step_response``；参数与返回值见类型注解。"""
     _sync_iteration_state(result["iteration"])
     return DemoIterationStepResponse(**result)
 
 
 @router.post("/{iteration_id}/train", response_model=DemoIterationStepResponse)
 async def train_demo_candidate(iteration_id: str) -> DemoIterationStepResponse:
+    """
+    train demo candidate。
+
+        Args:
+            iteration_id (str): 参数 ``iteration_id``。
+
+        Returns:
+            (DemoIterationStepResponse): 函数返回值。
+    """
+
     try:
         return _demo_step_response(_demo_runner().train_candidate(iteration_id))
     except DemoIterationError as error:
@@ -979,6 +1112,16 @@ async def train_demo_candidate(iteration_id: str) -> DemoIterationStepResponse:
 
 @router.post("/{iteration_id}/regression-test", response_model=DemoIterationStepResponse)
 async def run_demo_regression_test(iteration_id: str) -> DemoIterationStepResponse:
+    """
+    run demo regression test。
+
+        Args:
+            iteration_id (str): 参数 ``iteration_id``。
+
+        Returns:
+            (DemoIterationStepResponse): 函数返回值。
+    """
+
     try:
         return _demo_step_response(_demo_runner().run_regression_test(iteration_id))
     except DemoIterationError as error:
@@ -987,6 +1130,16 @@ async def run_demo_regression_test(iteration_id: str) -> DemoIterationStepRespon
 
 @router.post("/{iteration_id}/drift-analysis", response_model=DemoIterationStepResponse)
 async def run_demo_drift_analysis(iteration_id: str) -> DemoIterationStepResponse:
+    """
+    run demo drift analysis。
+
+        Args:
+            iteration_id (str): 参数 ``iteration_id``。
+
+        Returns:
+            (DemoIterationStepResponse): 函数返回值。
+    """
+
     try:
         return _demo_step_response(_demo_runner().run_drift_analysis(iteration_id))
     except DemoIterationError as error:
@@ -995,6 +1148,16 @@ async def run_demo_drift_analysis(iteration_id: str) -> DemoIterationStepRespons
 
 @router.post("/{iteration_id}/pr/create", response_model=DemoIterationStepResponse)
 async def create_demo_pr_metadata(iteration_id: str) -> DemoIterationStepResponse:
+    """
+    create demo pr metadata。
+
+        Args:
+            iteration_id (str): 参数 ``iteration_id``。
+
+        Returns:
+            (DemoIterationStepResponse): 函数返回值。
+    """
+
     try:
         return _demo_step_response(_demo_runner().create_pr_metadata(iteration_id))
     except DemoIterationError as error:
@@ -1003,6 +1166,16 @@ async def create_demo_pr_metadata(iteration_id: str) -> DemoIterationStepRespons
 
 @router.post("/{iteration_id}/ci/run", response_model=DemoIterationStepResponse)
 async def run_demo_ci_precheck(iteration_id: str) -> DemoIterationStepResponse:
+    """
+    run demo ci precheck。
+
+        Args:
+            iteration_id (str): 参数 ``iteration_id``。
+
+        Returns:
+            (DemoIterationStepResponse): 函数返回值。
+    """
+
     try:
         return _demo_step_response(_demo_runner().run_ci_precheck(iteration_id))
     except DemoIterationError as error:
@@ -1017,6 +1190,17 @@ async def approve_demo_safety(
         note="demo safety approval",
     ),
 ) -> DemoIterationStepResponse:
+    """
+    approve demo safety。
+
+        Args:
+            iteration_id (str): 参数 ``iteration_id``。
+            request (DemoApprovalRequest): 参数 ``request``。
+
+        Returns:
+            (DemoIterationStepResponse): 函数返回值。
+    """
+
     try:
         return _demo_step_response(
             _demo_runner().approve_safety(
@@ -1037,6 +1221,17 @@ async def approve_demo_tech(
         note="demo technical approval",
     ),
 ) -> DemoIterationStepResponse:
+    """
+    approve demo tech。
+
+        Args:
+            iteration_id (str): 参数 ``iteration_id``。
+            request (DemoApprovalRequest): 参数 ``request``。
+
+        Returns:
+            (DemoIterationStepResponse): 函数返回值。
+    """
+
     try:
         return _demo_step_response(
             _demo_runner().approve_tech(
@@ -1051,6 +1246,16 @@ async def approve_demo_tech(
 
 @router.post("/{iteration_id}/staging/start", response_model=DemoIterationStepResponse)
 async def start_demo_staging(iteration_id: str) -> DemoIterationStepResponse:
+    """
+    start demo staging。
+
+        Args:
+            iteration_id (str): 参数 ``iteration_id``。
+
+        Returns:
+            (DemoIterationStepResponse): 函数返回值。
+    """
+
     try:
         return _demo_step_response(_demo_runner().start_staging(iteration_id))
     except DemoIterationError as error:
@@ -1059,6 +1264,16 @@ async def start_demo_staging(iteration_id: str) -> DemoIterationStepResponse:
 
 @router.post("/{iteration_id}/staging/complete-demo", response_model=DemoIterationStepResponse)
 async def complete_demo_staging(iteration_id: str) -> DemoIterationStepResponse:
+    """
+    complete demo staging。
+
+        Args:
+            iteration_id (str): 参数 ``iteration_id``。
+
+        Returns:
+            (DemoIterationStepResponse): 函数返回值。
+    """
+
     try:
         return _demo_step_response(_demo_runner().complete_staging_demo(iteration_id))
     except DemoIterationError as error:
@@ -1070,6 +1285,17 @@ async def advance_demo_canary(
     iteration_id: str,
     request: DemoCanaryAdvanceRequest = DemoCanaryAdvanceRequest(),
 ) -> DemoIterationStepResponse:
+    """
+    advance demo canary。
+
+        Args:
+            iteration_id (str): 参数 ``iteration_id``。
+            request (DemoCanaryAdvanceRequest): 参数 ``request``。
+
+        Returns:
+            (DemoIterationStepResponse): 函数返回值。
+    """
+
     try:
         return _demo_step_response(
             _demo_runner().advance_canary(
@@ -1084,6 +1310,16 @@ async def advance_demo_canary(
 
 @router.post("/{iteration_id}/demo/run-next-step", response_model=DemoIterationStepResponse)
 async def run_demo_next_step(iteration_id: str) -> DemoIterationStepResponse:
+    """
+    run demo next step。
+
+        Args:
+            iteration_id (str): 参数 ``iteration_id``。
+
+        Returns:
+            (DemoIterationStepResponse): 函数返回值。
+    """
+
     try:
         return _demo_step_response(_demo_runner().run_next_step(iteration_id))
     except DemoIterationError as error:
@@ -1092,6 +1328,16 @@ async def run_demo_next_step(iteration_id: str) -> DemoIterationStepResponse:
 
 @router.post("/{iteration_id}/demo/run-to-end", response_model=DemoIterationStepResponse)
 async def run_demo_to_end(iteration_id: str) -> DemoIterationStepResponse:
+    """
+    run demo to end。
+
+        Args:
+            iteration_id (str): 参数 ``iteration_id``。
+
+        Returns:
+            (DemoIterationStepResponse): 函数返回值。
+    """
+
     try:
         return _demo_step_response(_demo_runner().run_to_end(iteration_id))
     except DemoIterationError as error:
@@ -1100,6 +1346,16 @@ async def run_demo_to_end(iteration_id: str) -> DemoIterationStepResponse:
 
 @router.get("/{iteration_id}/audit", response_model=IterationAuditResponse)
 async def get_iteration_audit(iteration_id: str) -> IterationAuditResponse:
+    """
+    get iteration audit。
+
+        Args:
+            iteration_id (str): 参数 ``iteration_id``。
+
+        Returns:
+            (IterationAuditResponse): 函数返回值。
+    """
+
     try:
         return IterationAuditResponse(**_demo_runner().get_audit(iteration_id))
     except DemoIterationError as error:
@@ -1108,6 +1364,16 @@ async def get_iteration_audit(iteration_id: str) -> IterationAuditResponse:
 
 @router.get("/{iteration_id}/reports", response_model=IterationReportsResponse)
 async def get_iteration_reports(iteration_id: str) -> IterationReportsResponse:
+    """
+    get iteration reports。
+
+        Args:
+            iteration_id (str): 参数 ``iteration_id``。
+
+        Returns:
+            (IterationReportsResponse): 函数返回值。
+    """
+
     try:
         return IterationReportsResponse(**_demo_runner().get_reports(iteration_id))
     except DemoIterationError as error:
@@ -1116,6 +1382,17 @@ async def get_iteration_reports(iteration_id: str) -> IterationReportsResponse:
 
 @router.get("/{iteration_id}/reports/{report_type}", response_model=IterationReportResponse)
 async def get_iteration_report(iteration_id: str, report_type: str) -> IterationReportResponse:
+    """
+    get iteration report。
+
+        Args:
+            iteration_id (str): 参数 ``iteration_id``。
+            report_type (str): 参数 ``report_type``。
+
+        Returns:
+            (IterationReportResponse): 函数返回值。
+    """
+
     try:
         return IterationReportResponse(**_demo_runner().get_report(iteration_id, report_type))
     except DemoIterationError as error:
@@ -1124,6 +1401,17 @@ async def get_iteration_report(iteration_id: str, report_type: str) -> Iteration
 
 @router.get("/{iteration_id}/reports/{report_type}/download")
 async def download_iteration_report(iteration_id: str, report_type: str) -> FileResponse:
+    """
+    download iteration report。
+
+        Args:
+            iteration_id (str): 参数 ``iteration_id``。
+            report_type (str): 参数 ``report_type``。
+
+        Returns:
+            (FileResponse): 函数返回值。
+    """
+
     try:
         payload = _demo_runner().get_report(iteration_id, report_type)
         path = Path(payload["path"])
@@ -1149,6 +1437,7 @@ async def trigger_iteration(
     """
     手动触发迭代流水线
     """
+
     try:
         _iteration_state["state"] = "TRAINING"
 
@@ -1183,6 +1472,7 @@ async def get_status() -> StatusResponse:
     """
     查询当前迭代状态
     """
+
     monitor = ModelMonitor()
     summary = monitor.get_monitoring_summary()
     replay_service = DemoReplayService()
@@ -1218,6 +1508,7 @@ async def get_iteration_record(iteration_id: str) -> IterationRecordResponse:
     """
     查询指定迭代记录。
     """
+
     record = DemoReplayService().get_iteration_record(iteration_id)
     if record is None:
         raise HTTPException(status_code=404, detail=f"iteration record not found: {iteration_id}")
@@ -1232,6 +1523,7 @@ async def approve(
     """
     审批人提交审批结果（security/tech 两级）
     """
+
     try:
         fsm = ApprovalFSM()
         record = fsm.approve(
@@ -1271,6 +1563,7 @@ async def canary(
     """
     调整灰度流量比例
     """
+
     try:
         cd = CanaryDeployment()
         result = cd.set_traffic_ratio(
@@ -1309,6 +1602,7 @@ async def run_regression(
     """
     手动触发回归测试
     """
+
     try:
         tester = RegressionTester(
             old_model_path=old_model_path,

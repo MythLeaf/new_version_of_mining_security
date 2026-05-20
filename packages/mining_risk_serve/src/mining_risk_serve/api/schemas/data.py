@@ -18,6 +18,7 @@ class DataUploadResponse(BaseModel):
       preview: 可选，前几行预览。
   """
 
+
   success: bool
   message: str
   rows: int = Field(default=0, ge=0)
@@ -27,6 +28,7 @@ class DataUploadResponse(BaseModel):
 
 class BatchUploadRequest(BaseModel):
   """批量 JSON 上传请求。"""
+
 
   records: List[Dict[str, Any]] = Field(..., min_length=1, description="记录列表")
   enterprise_id: Optional[str] = Field(default=None, description="默认企业 ID")

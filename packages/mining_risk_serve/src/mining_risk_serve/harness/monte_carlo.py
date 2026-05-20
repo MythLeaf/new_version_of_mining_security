@@ -21,6 +21,7 @@ logger = get_logger(__name__)
 
 class MonteCarloResult(BaseModel):
     """蒙特卡洛采样结果"""
+
     passed: bool = Field(description="是否通过阈值")
     confidence: float = Field(description="通过率 = passed / n")
     threshold: float = Field(description="置信度阈值")
@@ -35,7 +36,9 @@ class MonteCarloValidator:
     兼容旧接口的蒙特卡洛校验器
     """
 
+
     def __init__(self, n_samples: int = 20, confidence_threshold: float = 0.85):
+        """初始化 MonteCarloValidator；参数含义见类型注解与类文档。"""
         config = get_config()
         self.n_samples = n_samples or config.harness.validation.monte_carlo.n_samples
         self.confidence_threshold = confidence_threshold or config.harness.validation.monte_carlo.confidence_threshold
@@ -49,6 +52,7 @@ class MonteCarloValidator:
             decision: 决策字典
             checker: 兼容旧接口的 Checker 实例（需有 check 方法）
         """
+
         valid_count = 0
         samples = []
 
@@ -83,6 +87,7 @@ class MonteCarloValidator:
 
     def _perturb_decision(self, decision: Dict[str, Any]) -> Dict[str, Any]:
         """对决策施加随机扰动，模拟独立生成"""
+
         perturbed = copy.deepcopy(decision)
         if "probability_distribution" in perturbed:
             probs = perturbed["probability_distribution"]
@@ -94,6 +99,7 @@ class MonteCarloValidator:
 
     def _assess_risk(self, decision: Dict[str, Any]) -> Dict[str, Any]:
         """兼容旧接口的三维风险评估"""
+
         result = self.risk_assessor.assess(decision)
         max_score = 4.0
         risk_ratio = result.total_score / max_score if max_score > 0 else 0.0
@@ -114,12 +120,14 @@ class SamplingNode:
     使用独立 LLM 实例，confidence < 0.85 触发 HUMAN_REVIEW
     """
 
+
     def __init__(
         self,
         llm: Optional[Any] = None,
         n_samples: int = 20,
         confidence_threshold: float = 0.85,
     ):
+        """初始化 SamplingNode；参数含义见类型注解与类文档。"""
         config = get_config()
         self.llm = llm
         self.n_samples = n_samples or config.harness.validation.monte_carlo.n_samples
@@ -137,6 +145,7 @@ class SamplingNode:
             decision: 原始决策
             validator: MARCH 校验函数（接收 state 返回 dict），默认使用 harness.validation.run_march_validation
         """
+
         if validator is None:
             # 惰性导入，避免循环依赖
             from mining_risk_serve.harness.validation import run_march_validation
@@ -192,12 +201,14 @@ class SamplingNode:
 
     def _generate_sample(self, decision: Dict[str, Any], seed: int) -> Dict[str, Any]:
         """生成单个扰动样本"""
+
         if self.llm is not None:
             return self._llm_perturb(decision, seed)
         return self._deterministic_perturb(decision, seed)
 
     def _deterministic_perturb(self, decision: Dict[str, Any], seed: int) -> Dict[str, Any]:
         """确定性扰动：随机扰动概率分布"""
+
         random.seed(seed)
         perturbed = copy.deepcopy(decision)
         if "probability_distribution" in perturbed:
@@ -213,6 +224,7 @@ class SamplingNode:
         使用独立 LLM 实例生成语义等价的决策变体
         若 LLM 调用失败则回退到确定性扰动
         """
+
         try:
             prompt = (
                 f"请基于以下决策生成一个语义等价但表述略有不同的决策方案，"

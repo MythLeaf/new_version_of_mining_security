@@ -48,6 +48,14 @@ class NERDataset(Dataset):
         tokenizer: BertTokenizer,
         max_length: int = 512,
     ):
+        """
+        内部  init  。
+
+            Args:
+                data (List[Dict]): 参数 ``data``。
+                tokenizer (BertTokenizer): 参数 ``tokenizer``。
+                max_length (int): 参数 ``max_length``。
+        """
         self.data = data
         self.tokenizer = tokenizer
         self.max_length = max_length
@@ -134,6 +142,18 @@ def train_epoch(
     optimizer: torch.optim.Optimizer,
     device: str,
 ) -> float:
+    """
+    train epoch。
+
+        Args:
+            model (BertBiLSTMCRF): 参数 ``model``。
+            dataloader (DataLoader): 参数 ``dataloader``。
+            optimizer (torch.optim.Optimizer): 参数 ``optimizer``。
+            device (str): 参数 ``device``。
+
+        Returns:
+            (float): 函数返回值。
+    """
     model.train()
     total_loss = 0.0
     for batch in tqdm(dataloader, desc="Training"):
@@ -152,6 +172,17 @@ def train_epoch(
 
 
 def evaluate(model: BertBiLSTMCRF, dataloader: DataLoader, device: str) -> Dict[str, float]:
+    """
+    evaluate。
+
+        Args:
+            model (BertBiLSTMCRF): 参数 ``model``。
+            dataloader (DataLoader): 参数 ``dataloader``。
+            device (str): 参数 ``device``。
+
+        Returns:
+            (Dict[str, float]): 函数返回值。
+    """
     model.eval()
     total_loss = 0.0
     correct = 0
@@ -180,6 +211,9 @@ def evaluate(model: BertBiLSTMCRF, dataloader: DataLoader, device: str) -> Dict[
 
 
 def main():
+    """
+    main。
+    """
     parser = argparse.ArgumentParser(description="训练 NER 模型")
     parser.add_argument("--data", type=str, required=True, help="训练数据 JSON 路径")
     parser.add_argument("--output", type=str, default="artifacts/models/ner_model.pt", help="模型输出路径")

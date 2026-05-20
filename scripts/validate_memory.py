@@ -165,6 +165,9 @@ async def long_term_recall_validation():
 
 
 async def main():
+    """
+    main。
+    """
     print("开始 Step 4 长短期混合记忆系统手动验证\n")
     mem = short_term_validation()
     await archive_validation(mem)

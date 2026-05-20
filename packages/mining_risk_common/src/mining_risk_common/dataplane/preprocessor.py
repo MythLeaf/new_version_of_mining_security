@@ -31,25 +31,55 @@ logger = get_logger(__name__)
 
 class BinaryEncoder(BaseEstimator, TransformerMixin):
     """
+
     二值型编码器
     将"是"/"True/False"等多格式取值统一映射为 0/1
     固定风险方向：1=存在风险/高风险状态，0=无风险/低风险状态
     """
 
     def __init__(self):
+        """初始化 BinaryEncoder；参数含义见类型注解与类文档。"""
         self.positive_values = {"是", "有", "true", "1", "yes", "y", "t", "存在", "有效", "落实"}
         self.negative_values = {"否", "无", "false", "0", "no", "n", "f", "不存在", "无效", "未落实"}
 
     def fit(self, X: pd.DataFrame, y=None):
+        """
+                拟合转换器（本实现多为无状态，直接返回 self）。
+            
+                Args:
+                    X (pd.DataFrame): 输入特征矩阵。
+                    y (Any, optional): 监督标签，可忽略。
+            
+                Returns:
+                    self: 当前转换器实例。
+        """
         return self
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+        """
+                对输入特征执行变换。
+            
+                Args:
+                    X (pd.DataFrame): 待变换特征矩阵。
+            
+                Returns:
+                    pd.DataFrame: 变换后的特征矩阵。
+        """
         result = X.copy()
         for col in result.columns:
             result[col] = result[col].apply(self._encode_value)
         return result
 
     def _encode_value(self, val: Any) -> int:
+        """
+                二值风险编码。
+            
+                Args:
+                    val (Any): 单元格值。
+            
+                Returns:
+                    int: 0 或 1。
+        """
         if pd.isna(val):
             return 0  # 缺失默认为低风险
         s = str(val).strip().lower()
@@ -71,7 +101,9 @@ class NumericTransformer(BaseEstimator, TransformerMixin):
     支持分级加权求和
     """
 
+
     def __init__(self, clip_quantile: float = 0.99, use_log: bool = True):
+        """初始化 NumericTransformer；参数含义见类型注解与类文档。"""
         self.clip_quantile = clip_quantile
         self.use_log = use_log
         self.scaler = MinMaxScaler()
@@ -79,6 +111,16 @@ class NumericTransformer(BaseEstimator, TransformerMixin):
         self.fill_values_: Dict[str, float] = {}
 
     def fit(self, X: pd.DataFrame, y=None):
+        """
+                拟合转换器（本实现多为无状态，直接返回 self）。
+            
+                Args:
+                    X (pd.DataFrame): 输入特征矩阵。
+                    y (Any, optional): 监督标签，可忽略。
+            
+                Returns:
+                    self: 当前转换器实例。
+        """
         for col in X.columns:
             series = pd.to_numeric(X[col], errors="coerce")
             upper = series.quantile(self.clip_quantile)
@@ -91,11 +133,21 @@ class NumericTransformer(BaseEstimator, TransformerMixin):
         return self
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+        """
+                对输入特征执行变换。
+            
+                Args:
+                    X (pd.DataFrame): 待变换特征矩阵。
+            
+                Returns:
+                    pd.DataFrame: 变换后的特征矩阵。
+        """
         X_clipped = self._clip_and_transform(X, fit=False)
         scaled = self.scaler.transform(X_clipped)
         return pd.DataFrame(scaled, columns=X.columns, index=X.index)
 
     def _clip_and_transform(self, X: pd.DataFrame, fit: bool = False) -> pd.DataFrame:
+        """内部辅助方法 ``_clip_and_transform``；参数与返回值见类型注解。"""
         result = X.copy().astype(float)
         for col in result.columns:
             if col in self.upper_bounds_:
@@ -120,10 +172,22 @@ class EnumRiskMapper(BaseEstimator, TransformerMixin):
     将枚举类别映射为风险程度数值
     """
 
+
     def __init__(self, risk_order: Optional[Dict[str, Dict[str, int]]] = None):
+        """初始化 EnumRiskMapper；参数含义见类型注解与类文档。"""
         self.risk_order = risk_order
 
     def fit(self, X: pd.DataFrame, y=None):
+        """
+                拟合转换器（本实现多为无状态，直接返回 self）。
+            
+                Args:
+                    X (pd.DataFrame): 输入特征矩阵。
+                    y (Any, optional): 监督标签，可忽略。
+            
+                Returns:
+                    self: 当前转换器实例。
+        """
         self.fallback_mapping_: Dict[str, Dict[Any, int]] = {}
         for col in X.columns:
             unique_vals = X[col].dropna().unique()
@@ -138,6 +202,15 @@ class EnumRiskMapper(BaseEstimator, TransformerMixin):
         return self
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+        """
+                对输入特征执行变换。
+            
+                Args:
+                    X (pd.DataFrame): 待变换特征矩阵。
+            
+                Returns:
+                    pd.DataFrame: 变换后的特征矩阵。
+        """
         result = X.copy()
         risk_order = self.risk_order or {}
         for col in result.columns:
@@ -153,6 +226,7 @@ class TextRiskExtractor(BaseEstimator, TransformerMixin):
     2. 高危词匹配统计
     """
 
+
     HIGH_RISK_WORDS = [
         "爆炸", "火灾", "泄漏", "中毒", "坍塌", "瓦斯", "超限", "违规",
         "停产", "重大隐患", "死亡", "重伤", " pollution", "pollution",
@@ -160,12 +234,32 @@ class TextRiskExtractor(BaseEstimator, TransformerMixin):
     ]
 
     def __init__(self, high_risk_words: Optional[List[str]] = None):
+        """初始化 TextRiskExtractor；参数含义见类型注解与类文档。"""
         self.high_risk_words = high_risk_words or self.HIGH_RISK_WORDS
 
     def fit(self, X: pd.DataFrame, y=None):
+        """
+                拟合转换器（本实现多为无状态，直接返回 self）。
+            
+                Args:
+                    X (pd.DataFrame): 输入特征矩阵。
+                    y (Any, optional): 监督标签，可忽略。
+            
+                Returns:
+                    self: 当前转换器实例。
+        """
         return self
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+        """
+                对输入特征执行变换。
+            
+                Args:
+                    X (pd.DataFrame): 待变换特征矩阵。
+            
+                Returns:
+                    pd.DataFrame: 变换后的特征矩阵。
+        """
         result = pd.DataFrame(index=X.index)
         for col in X.columns:
             result[f"{col}_completeness"] = X[col].apply(self._completeness_score)
@@ -179,6 +273,7 @@ class TextRiskExtractor(BaseEstimator, TransformerMixin):
 
     def _completeness_score(self, text: Any) -> float:
         """文本完整性评分：越短/NaN -> 高分（1.0），有内容 -> 低分"""
+
         if pd.isna(text):
             return 1.0
         s = str(text).strip()
@@ -190,6 +285,7 @@ class TextRiskExtractor(BaseEstimator, TransformerMixin):
 
     def _count_risk_words(self, text: Any) -> int:
         """统计高危词命中次数"""
+
         if pd.isna(text):
             return 0
         s = str(text)
@@ -204,6 +300,7 @@ class IndustryRiskCoefficient(BaseEstimator, TransformerMixin):
     行业风险系数映射器
     按行业风险基准表映射系数
     """
+
 
     DEFAULT_COEFFICIENTS = {
         "采矿": 1.5,
@@ -223,12 +320,32 @@ class IndustryRiskCoefficient(BaseEstimator, TransformerMixin):
     }
 
     def __init__(self, coefficients: Optional[Dict[str, float]] = None):
+        """初始化 IndustryRiskCoefficient；参数含义见类型注解与类文档。"""
         self.coefficients = coefficients or self.DEFAULT_COEFFICIENTS
 
     def fit(self, X: pd.DataFrame, y=None):
+        """
+                拟合转换器（本实现多为无状态，直接返回 self）。
+            
+                Args:
+                    X (pd.DataFrame): 输入特征矩阵。
+                    y (Any, optional): 监督标签，可忽略。
+            
+                Returns:
+                    self: 当前转换器实例。
+        """
         return self
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+        """
+                对输入特征执行变换。
+            
+                Args:
+                    X (pd.DataFrame): 待变换特征矩阵。
+            
+                Returns:
+                    pd.DataFrame: 变换后的特征矩阵。
+        """
         result = pd.DataFrame(index=X.index)
         # 取第一个行业列作为基准
         if len(X.columns) == 0:
@@ -239,6 +356,7 @@ class IndustryRiskCoefficient(BaseEstimator, TransformerMixin):
         return result
 
     def _map_coefficient(self, val: Any) -> float:
+        """内部辅助方法 ``_map_coefficient``；参数与返回值见类型注解。"""
         if pd.isna(val):
             return self.coefficients["default"]
         s = str(val)
@@ -255,24 +373,45 @@ class MissingValueHandler(BaseEstimator, TransformerMixin):
     - 客观统计值缺失：填充全局/行业均值
     """
 
+
     def __init__(
         self,
         management_fields: Optional[List[str]] = None,
         objective_fields: Optional[List[str]] = None,
         management_score: float = 0.7,
     ):
+        """初始化 MissingValueHandler；参数含义见类型注解与类文档。"""
         self.management_fields = management_fields or []
         self.objective_fields = objective_fields or []
         self.management_score = management_score
         self.means_: Dict[str, float] = {}
 
     def fit(self, X: pd.DataFrame, y=None):
+        """
+                拟合转换器（本实现多为无状态，直接返回 self）。
+            
+                Args:
+                    X (pd.DataFrame): 输入特征矩阵。
+                    y (Any, optional): 监督标签，可忽略。
+            
+                Returns:
+                    self: 当前转换器实例。
+        """
         for col in self.objective_fields:
             if col in X.columns:
                 self.means_[col] = X[col].mean()
         return self
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+        """
+                对输入特征执行变换。
+            
+                Args:
+                    X (pd.DataFrame): 待变换特征矩阵。
+            
+                Returns:
+                    pd.DataFrame: 变换后的特征矩阵。
+        """
         result = X.copy()
         for col in self.management_fields:
             if col in result.columns:
@@ -289,20 +428,41 @@ class DustRemovalRatioTransformer(BaseEstimator, TransformerMixin):
     基于除尘记录表计算干式/湿式除尘比例
     """
 
+
     def __init__(
         self,
         dry_col: Optional[str] = None,
         wet_col: Optional[str] = None,
         total_col: Optional[str] = None,
     ):
+        """初始化 DustRemovalRatioTransformer；参数含义见类型注解与类文档。"""
         self.dry_col = dry_col
         self.wet_col = wet_col
         self.total_col = total_col
 
     def fit(self, X: pd.DataFrame, y=None):
+        """
+                拟合转换器（本实现多为无状态，直接返回 self）。
+            
+                Args:
+                    X (pd.DataFrame): 输入特征矩阵。
+                    y (Any, optional): 监督标签，可忽略。
+            
+                Returns:
+                    self: 当前转换器实例。
+        """
         return self
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+        """
+                对输入特征执行变换。
+            
+                Args:
+                    X (pd.DataFrame): 待变换特征矩阵。
+            
+                Returns:
+                    pd.DataFrame: 变换后的特征矩阵。
+        """
         result = pd.DataFrame(index=X.index)
         # 自动探测列名
         dry = self.dry_col or self._find_col(X, ["干式除尘", "干除尘", "dry_dust"])
@@ -330,6 +490,7 @@ class DustRemovalRatioTransformer(BaseEstimator, TransformerMixin):
         return result
 
     def _find_col(self, X: pd.DataFrame, candidates: List[str]) -> Optional[str]:
+        """内部辅助方法 ``_find_col``；参数与返回值见类型注解。"""
         for c in X.columns:
             for pat in candidates:
                 if pat in c:
@@ -343,15 +504,36 @@ class ConfinedSpaceORTransformer(BaseEstimator, TransformerMixin):
     三字段（或更多）取 OR：任一字段为真(1/是)则输出 1
     """
 
+
     def __init__(self, cols: Optional[List[str]] = None):
+        """初始化 ConfinedSpaceORTransformer；参数含义见类型注解与类文档。"""
         self.cols = cols
 
     def fit(self, X: pd.DataFrame, y=None):
+        """
+                拟合转换器（本实现多为无状态，直接返回 self）。
+            
+                Args:
+                    X (pd.DataFrame): 输入特征矩阵。
+                    y (Any, optional): 监督标签，可忽略。
+            
+                Returns:
+                    self: 当前转换器实例。
+        """
         if self.cols is None:
             self.cols = self._auto_detect(X)
         return self
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+        """
+                对输入特征执行变换。
+            
+                Args:
+                    X (pd.DataFrame): 待变换特征矩阵。
+            
+                Returns:
+                    pd.DataFrame: 变换后的特征矩阵。
+        """
         result = pd.DataFrame(index=X.index)
         if not self.cols:
             result["confined_space_flag"] = 0
@@ -366,6 +548,7 @@ class ConfinedSpaceORTransformer(BaseEstimator, TransformerMixin):
         return result
 
     def _auto_detect(self, X: pd.DataFrame) -> List[str]:
+        """内部辅助方法 ``_auto_detect``；参数与返回值见类型注解。"""
         patterns = ["有限空间", "密闭空间", "受限空间", "confined_space", "空间作业"]
         found = []
         for c in X.columns:
@@ -376,6 +559,7 @@ class ConfinedSpaceORTransformer(BaseEstimator, TransformerMixin):
         return found
 
     def _to_binary(self, val: Any) -> int:
+        """内部辅助方法 ``_to_binary``；参数与返回值见类型注解。"""
         if pd.isna(val):
             return 0
         s = str(val).strip().lower()
@@ -393,15 +577,36 @@ class HazardousChemicalORTransformer(BaseEstimator, TransformerMixin):
     多个危化品相关字段取 OR
     """
 
+
     def __init__(self, cols: Optional[List[str]] = None):
+        """初始化 HazardousChemicalORTransformer；参数含义见类型注解与类文档。"""
         self.cols = cols
 
     def fit(self, X: pd.DataFrame, y=None):
+        """
+                拟合转换器（本实现多为无状态，直接返回 self）。
+            
+                Args:
+                    X (pd.DataFrame): 输入特征矩阵。
+                    y (Any, optional): 监督标签，可忽略。
+            
+                Returns:
+                    self: 当前转换器实例。
+        """
         if self.cols is None:
             self.cols = self._auto_detect(X)
         return self
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+        """
+                对输入特征执行变换。
+            
+                Args:
+                    X (pd.DataFrame): 待变换特征矩阵。
+            
+                Returns:
+                    pd.DataFrame: 变换后的特征矩阵。
+        """
         result = pd.DataFrame(index=X.index)
         if not self.cols:
             result["hazardous_chemical_flag"] = 0
@@ -416,6 +621,7 @@ class HazardousChemicalORTransformer(BaseEstimator, TransformerMixin):
         return result
 
     def _auto_detect(self, X: pd.DataFrame) -> List[str]:
+        """内部辅助方法 ``_auto_detect``；参数与返回值见类型注解。"""
         patterns = ["危化品", "危险化学品", "化学品", "hazardous_chemical", "chemical"]
         found = []
         for c in X.columns:
@@ -426,6 +632,7 @@ class HazardousChemicalORTransformer(BaseEstimator, TransformerMixin):
         return found
 
     def _to_binary(self, val: Any) -> int:
+        """内部辅助方法 ``_to_binary``；参数与返回值见类型注解。"""
         if pd.isna(val):
             return 0
         s = str(val).strip().lower()
@@ -443,6 +650,7 @@ class TimeDecayWeightTransformer(BaseEstimator, TransformerMixin):
     当年 1.0 / 前一年 0.7 / 前两年 0.5
     """
 
+
     def __init__(
         self,
         time_col: Optional[str] = None,
@@ -450,12 +658,23 @@ class TimeDecayWeightTransformer(BaseEstimator, TransformerMixin):
         reference_year: Optional[int] = None,
         missing_time_weight: float = 1.0,
     ):
+        """初始化 TimeDecayWeightTransformer；参数含义见类型注解与类文档。"""
         self.time_col = time_col
         self.value_cols = value_cols or []
         self.reference_year = reference_year
         self.missing_time_weight = missing_time_weight
 
     def fit(self, X: pd.DataFrame, y=None):
+        """
+                拟合转换器（本实现多为无状态，直接返回 self）。
+            
+                Args:
+                    X (pd.DataFrame): 输入特征矩阵。
+                    y (Any, optional): 监督标签，可忽略。
+            
+                Returns:
+                    self: 当前转换器实例。
+        """
         if self.time_col is None:
             for c in X.columns:
                 if "时间" in c or "年份" in c or "year" in c.lower():
@@ -464,6 +683,15 @@ class TimeDecayWeightTransformer(BaseEstimator, TransformerMixin):
         return self
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+        """
+                对输入特征执行变换。
+            
+                Args:
+                    X (pd.DataFrame): 待变换特征矩阵。
+            
+                Returns:
+                    pd.DataFrame: 变换后的特征矩阵。
+        """
         result = pd.DataFrame(index=X.index)
         if self.time_col is None or self.time_col not in X.columns:
             # 若无时间列，直接返回原数值列
@@ -494,17 +722,29 @@ class GeoFenceTransformer(BaseEstimator, TransformerMixin):
     比对经纬度是否在化工园区范围内
     """
 
+
     def __init__(
         self,
         lon_col: Optional[str] = None,
         lat_col: Optional[str] = None,
         fence_polygons: Optional[List[List[Tuple[float, float]]]] = None,
     ):
+        """初始化 GeoFenceTransformer；参数含义见类型注解与类文档。"""
         self.lon_col = lon_col
         self.lat_col = lat_col
         self.fence_polygons = fence_polygons
 
     def fit(self, X: pd.DataFrame, y=None):
+        """
+                拟合转换器（本实现多为无状态，直接返回 self）。
+            
+                Args:
+                    X (pd.DataFrame): 输入特征矩阵。
+                    y (Any, optional): 监督标签，可忽略。
+            
+                Returns:
+                    self: 当前转换器实例。
+        """
         if self.lon_col is None:
             for c in X.columns:
                 if "经度" in c or "lon" in c.lower():
@@ -518,6 +758,15 @@ class GeoFenceTransformer(BaseEstimator, TransformerMixin):
         return self
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+        """
+                对输入特征执行变换。
+            
+                Args:
+                    X (pd.DataFrame): 待变换特征矩阵。
+            
+                Returns:
+                    pd.DataFrame: 变换后的特征矩阵。
+        """
         result = pd.DataFrame(index=X.index)
         if self.lon_col is None or self.lat_col is None:
             result["in_chemical_park"] = 0
@@ -542,6 +791,7 @@ class GeoFenceTransformer(BaseEstimator, TransformerMixin):
         return result
 
     def _point_in_polygons(self, lon: float, lat: float, polygons: List[List[Tuple[float, float]]]) -> bool:
+        """内部辅助方法 ``_point_in_polygons``；参数与返回值见类型注解。"""
         for poly in polygons:
             if self._point_in_polygon(lon, lat, poly):
                 return True
@@ -549,6 +799,7 @@ class GeoFenceTransformer(BaseEstimator, TransformerMixin):
 
     @staticmethod
     def _point_in_polygon(x: float, y: float, polygon: List[Tuple[float, float]]) -> bool:
+        """内部辅助方法 ``_point_in_polygon``；参数与返回值见类型注解。"""
         n = len(polygon)
         inside = False
         p1x, p1y = polygon[0]
@@ -571,6 +822,7 @@ class EnterpriseAggregator(BaseEstimator, TransformerMixin):
     隐患加权、文书加权（立案 > 检查）
     """
 
+
     DEFAULT_DOC_WEIGHTS = {"立案": 3.0, "处罚": 2.5, "检查": 1.0, "文书": 1.5}
 
     def __init__(
@@ -580,12 +832,23 @@ class EnterpriseAggregator(BaseEstimator, TransformerMixin):
         document_cols: Optional[List[str]] = None,
         document_weights: Optional[Dict[str, float]] = None,
     ):
+        """初始化 EnterpriseAggregator；参数含义见类型注解与类文档。"""
         self.enterprise_id_col = enterprise_id_col
         self.hazard_cols = hazard_cols
         self.document_cols = document_cols
         self.document_weights = document_weights
 
     def fit(self, X: pd.DataFrame, y=None):
+        """
+                拟合转换器（本实现多为无状态，直接返回 self）。
+            
+                Args:
+                    X (pd.DataFrame): 输入特征矩阵。
+                    y (Any, optional): 监督标签，可忽略。
+            
+                Returns:
+                    self: 当前转换器实例。
+        """
         if self.enterprise_id_col is None:
             for c in X.columns:
                 if "企业" in c and ("ID" in c or "id" in c or "代码" in c):
@@ -594,6 +857,15 @@ class EnterpriseAggregator(BaseEstimator, TransformerMixin):
         return self
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+        """
+                对输入特征执行变换。
+            
+                Args:
+                    X (pd.DataFrame): 待变换特征矩阵。
+            
+                Returns:
+                    pd.DataFrame: 变换后的特征矩阵。
+        """
         result = pd.DataFrame(index=X.index)
         if self.enterprise_id_col is None or self.enterprise_id_col not in X.columns:
             result["enterprise_hazard_score"] = 0
@@ -637,6 +909,7 @@ class DataCredibilityTransformer(BaseEstimator, TransformerMixin):
     检查来源映射：4>3>2>1
     """
 
+
     DEFAULT_SOURCE_MAP = {
         "4": 4.0, "执法": 4.0, "专项检查": 4.0,
         "3": 3.0, "整改复查": 3.0, "立案": 3.0,
@@ -649,10 +922,21 @@ class DataCredibilityTransformer(BaseEstimator, TransformerMixin):
         source_col: Optional[str] = None,
         source_map: Optional[Dict[str, float]] = None,
     ):
+        """初始化 DataCredibilityTransformer；参数含义见类型注解与类文档。"""
         self.source_col = source_col
         self.source_map = source_map
 
     def fit(self, X: pd.DataFrame, y=None):
+        """
+                拟合转换器（本实现多为无状态，直接返回 self）。
+            
+                Args:
+                    X (pd.DataFrame): 输入特征矩阵。
+                    y (Any, optional): 监督标签，可忽略。
+            
+                Returns:
+                    self: 当前转换器实例。
+        """
         if self.source_col is None:
             for c in X.columns:
                 if "来源" in c or "source" in c.lower():
@@ -661,6 +945,15 @@ class DataCredibilityTransformer(BaseEstimator, TransformerMixin):
         return self
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+        """
+                对输入特征执行变换。
+            
+                Args:
+                    X (pd.DataFrame): 待变换特征矩阵。
+            
+                Returns:
+                    pd.DataFrame: 变换后的特征矩阵。
+        """
         result = pd.DataFrame(index=X.index)
         if self.source_col is None or self.source_col not in X.columns:
             result["data_credibility"] = 1.0
@@ -696,6 +989,7 @@ def csv_to_markdown_table(csv_path: str, max_rows: int = 100, delimiter: str = "
     Returns:
         Markdown 表格字符串
     """
+
     import csv as csv_module
     with open(csv_path, "r", encoding="utf-8-sig", newline="") as f:
         reader = csv_module.reader(f, delimiter=delimiter)
@@ -719,7 +1013,9 @@ class FeatureEngineeringPipeline:
     严格对齐建设方案 0.1 节
     """
 
+
     def __init__(self):
+        """初始化 FeatureEngineeringPipeline；参数含义见类型注解与类文档。"""
         config = get_config()
         self.config = config.features
         self.pipeline: Optional[Pipeline] = None
@@ -727,6 +1023,7 @@ class FeatureEngineeringPipeline:
 
     def _build_pipeline(self, available_columns: Optional[List[str]] = None) -> None:
         """构建预处理 Pipeline，只使用实际存在的列"""
+
         # 根据可用列动态选择
         def _filter(cols: List[str]) -> List[str]:
             if available_columns is None:
@@ -867,6 +1164,7 @@ class FeatureEngineeringPipeline:
 
     def fit_transform(self, df: pd.DataFrame) -> pd.DataFrame:
         """拟合并转换数据"""
+
         try:
             # 动态构建 pipeline，只使用实际存在的列
             self._build_pipeline(available_columns=list(df.columns))
@@ -885,6 +1183,7 @@ class FeatureEngineeringPipeline:
 
     def transform(self, df: pd.DataFrame) -> pd.DataFrame:
         """转换数据（需先 fit）"""
+
         try:
             result = self.pipeline.transform(df)
             feature_names = self._get_feature_names(list(df.columns))
@@ -894,6 +1193,7 @@ class FeatureEngineeringPipeline:
 
     def _get_feature_names(self, available_columns: Optional[List[str]] = None) -> List[str]:
         """获取变换后的特征名"""
+
         def _filter(cols: List[str]) -> List[str]:
             if available_columns is None:
                 return cols
@@ -954,11 +1254,13 @@ class FeatureEngineeringPipeline:
 
     def save(self, path: str) -> None:
         """序列化 Pipeline"""
+
         joblib.dump(self.pipeline, path)
         logger.info(f"Pipeline 已保存至 {path}")
 
     def load(self, path: str) -> None:
         """加载序列化的 Pipeline"""
+
         from mining_risk_common.compat.pickle_legacy import register_legacy_pickle_modules
 
         register_legacy_pickle_modules()

@@ -38,7 +38,9 @@ class PredictionService:
         registry: 资源注册表，提供模型/流水线/工作流实例。
     """
 
+
     def __init__(self, registry: Optional[ResourceRegistry] = None) -> None:
+        """初始化 PredictionService；参数含义见类型注解与类文档。"""
         self._registry = registry or get_registry()
 
     def resolve_scenario_id(self, request: DecisionRequest) -> str:
@@ -53,6 +55,7 @@ class PredictionService:
         Raises:
             HTTPException: 场景 ID 不在允许集合内时返回 400。
         """
+
         scenario_id = (
             request.scenario_id
             or request.data.get("scenario_id")
@@ -86,6 +89,7 @@ class PredictionService:
         Raises:
             Exception: 数据标准化、特征工程或推理失败时向上抛出。
         """
+
         model = model or self._registry.get_model()
         pipeline = pipeline or self._registry.get_pipeline()
         validator = validator or self._registry.get_validator()
@@ -137,6 +141,7 @@ class PredictionService:
         Raises:
             HTTPException: Mock 降级关闭且工作流失败时返回 503。
         """
+
         scenario_id = self.resolve_scenario_id(request)
         workflow = self._registry.get_workflow(scenario_id)
         try:
@@ -181,6 +186,7 @@ class PredictionService:
         Yields:
             ``data: {...}\\n\\n`` 格式的 SSE 块。
         """
+
         scenario_id = self.resolve_scenario_id(request)
         async for chunk in self._decision_stream(
             request.enterprise_id,
@@ -202,6 +208,7 @@ class PredictionService:
         Raises:
             HTTPException: 场景无效或切换失败。
         """
+
         if scenario_id not in VALID_SCENARIO_IDS:
             raise HTTPException(
                 status_code=400,
@@ -226,6 +233,7 @@ class PredictionService:
 
     def get_llm_config(self, message: str = "") -> LLMConfigResponse:
         """构建当前 LLM 配置响应。"""
+
         config = get_config()
         llm_cfg = config.llm.active
         return LLMConfigResponse(
@@ -242,6 +250,7 @@ class PredictionService:
 
     def switch_llm_provider(self, provider: str) -> LLMConfigResponse:
         """切换运行时 LLM 提供方。"""
+
         normalized = provider.lower()
         try:
             config = get_config()
@@ -256,6 +265,7 @@ class PredictionService:
 
     def update_llm_config(self, request: LLMUpdateRequest) -> LLMConfigResponse:
         """更新并切换 LLM 提供方配置。"""
+
         provider = request.provider.strip().lower()
         if not provider:
             raise HTTPException(status_code=400, detail="provider 不能为空")
@@ -279,6 +289,7 @@ class PredictionService:
 
     def query_history(self, enterprise_id: Optional[str], risk_level: Optional[str]) -> List[Dict[str, Any]]:
         """查询预警历史（演示占位）。"""
+
         return [
             {
                 "enterprise_id": enterprise_id or "demo",
@@ -293,6 +304,7 @@ class PredictionService:
     # -------------------------------------------------------------------------
 
     def _generate_mock_decision(self, request: DecisionRequest) -> DecisionResponse:
+        """内部辅助方法 ``_generate_mock_decision``；参数与返回值见类型注解。"""
         scenario_id = request.scenario_id or request.data.get("scenario_id", "chemical")
         if scenario_id not in VALID_SCENARIO_IDS:
             scenario_id = "chemical"
@@ -306,6 +318,7 @@ class PredictionService:
 
     @staticmethod
     def _fallback_mock_decision(enterprise_id: str, scenario_id: str) -> Dict[str, Any]:
+        """内部辅助方法 ``_fallback_mock_decision``；参数与返回值见类型注解。"""
         return {
             "enterprise_id": enterprise_id,
             "scenario_id": scenario_id,
@@ -369,6 +382,7 @@ class PredictionService:
         request: DecisionRequest,
         final_state: Dict[str, Any],
     ) -> DecisionResponse:
+        """内部辅助方法 ``_build_decision_response``；参数与返回值见类型注解。"""
         prediction = final_state.get("prediction") or {}
         decision_data = final_state.get("decision") or {}
         return DecisionResponse(
@@ -389,6 +403,7 @@ class PredictionService:
 
     @staticmethod
     def _validate_workflow_state(final_state: Dict[str, Any]) -> None:
+        """内部辅助方法 ``_validate_workflow_state``；参数与返回值见类型注解。"""
         prediction = final_state.get("prediction") or {}
         if (
             not prediction.get("predicted_level")
@@ -404,6 +419,7 @@ class PredictionService:
         prediction: Dict[str, Any],
         final_state: Dict[str, Any],
     ) -> None:
+        """内部辅助方法 ``_try_audit_decision``；参数与返回值见类型注解。"""
         try:
             from mining_risk_serve.api.routers.audit import AuditLogRequest, log_audit
 
@@ -426,6 +442,7 @@ class PredictionService:
         scenario_id: str,
         request: DecisionRequest,
     ) -> AsyncGenerator[str, None]:
+        """内部辅助方法 ``_decision_stream``；参数与返回值见类型注解。"""
         try:
             workflow = self._registry.get_workflow(scenario_id)
             final_state: Dict[str, Any] = {}
@@ -490,6 +507,7 @@ class PredictionService:
         raw_data: Dict[str, Any],
         scenario_id: str,
     ) -> AsyncGenerator[str, None]:
+        """内部辅助方法 ``_mock_decision_stream``；参数与返回值见类型注解。"""
         request = DecisionRequest(enterprise_id=enterprise_id, data=raw_data, scenario_id=scenario_id)
         mock_resp = self._generate_mock_decision(request)
         mock_resp.mock = True
@@ -514,6 +532,7 @@ class PredictionService:
 
     @staticmethod
     def _generate_suggestions(result: Dict[str, Any], validation: Dict[str, Any]) -> Dict[str, Any]:
+        """内部辅助方法 ``_generate_suggestions``；参数与返回值见类型注解。"""
         level = result["predicted_level"]
         gov_suggestions = {
             "一级": {
@@ -552,4 +571,5 @@ class PredictionService:
 
 def get_prediction_service() -> PredictionService:
     """FastAPI 依赖：预测与决策服务单例。"""
+
     return PredictionService(get_registry())

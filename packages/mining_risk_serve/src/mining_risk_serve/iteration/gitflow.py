@@ -18,10 +18,12 @@ logger = get_logger(__name__)
 
 class GitFlowManager:
     """
+
     Git Flow 分支管理器
     """
 
     def __init__(self, repo_path: Optional[str] = None):
+        """初始化 GitFlowManager；参数含义见类型注解与类文档。"""
         config = get_config()
         self.repo_path = repo_path or "."
         self.main_branch = config.harness.model_iteration.git_flow.main_branch
@@ -31,16 +33,19 @@ class GitFlowManager:
 
     def _ensure_repo(self) -> None:
         """确保是 Git 仓库"""
+
         git_dir = os.path.join(self.repo_path, ".git")
         if not os.path.exists(git_dir):
             Repo.init(self.repo_path)
             logger.info(f"Git 仓库已初始化: {self.repo_path}")
 
     def _repo(self) -> Repo:
+        """内部辅助方法 ``_repo``；参数与返回值见类型注解。"""
         return Repo(self.repo_path)
 
     def _run_git(self, args: List[str]) -> str:
         """执行 Git 命令"""
+
         result = subprocess.run(
             ["git", "-C", self.repo_path] + args,
             capture_output=True,
@@ -56,6 +61,7 @@ class GitFlowManager:
         从 main 创建 feature 分支
         分支名格式: feature/model_v{x}
         """
+
         branch_name = f"{self.feature_prefix}model_{model_version}"
 
         # 确保 main 分支存在
@@ -83,6 +89,7 @@ class GitFlowManager:
         """
         自动生成 PR 描述，含新旧模型性能对比
         """
+
         def _fmt(key: str) -> str:
             old_v = old_metrics.get(key, 0.0)
             new_v = new_metrics.get(key, 0.0)
@@ -128,6 +135,7 @@ class GitFlowManager:
         配置分支保护规则脚本
         禁止直接推送，强制 PR 审核
         """
+
         hook_path = os.path.join(self.repo_path, ".git", "hooks", "pre-push")
         hook_content = """#!/bin/sh
 # 分支保护钩子：禁止直接推送 main
@@ -145,6 +153,7 @@ done
 
 exit 0
 """
+
         with open(hook_path, "w", encoding="utf-8") as f:
             f.write(hook_content)
 
@@ -158,6 +167,7 @@ exit 0
 
     def commit_changes(self, message: str, files: Optional[List[str]] = None) -> str:
         """提交变更"""
+
         repo = self._repo()
         if files:
             repo.index.add(files)

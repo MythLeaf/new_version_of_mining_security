@@ -26,6 +26,7 @@ logger = get_logger(__name__)
 
 
 def _lexical_score(query: str, text: str) -> float:
+    """内部辅助方法 ``_lexical_score``；参数与返回值见类型注解。"""
     query_norm = re.sub(r"\s+", "", query.lower())
     text_norm = re.sub(r"\s+", "", text.lower())
     if not query_norm or not text_norm:
@@ -58,11 +59,13 @@ class Reranker:
     使用 BGE-Reranker-large 或配置的交叉编码模型对候选段落重新排序
     """
 
+
     def __init__(
         self,
         model_name: Optional[str] = None,
         device: Optional[str] = None,
     ):
+        """初始化 Reranker；参数含义见类型注解与类文档。"""
         config = get_config()
         self.model_name = model_name or config.harness.memory.long_term.rag.get(
             "reranker_model", "BAAI/bge-reranker-large"
@@ -72,6 +75,7 @@ class Reranker:
         self._fallback_warned = False
 
     def _load_model(self) -> Any:
+        """内部辅助方法 ``_load_model``；参数与返回值见类型注解。"""
         if CrossEncoder is None:
             detail = f" 原始错误: {_CROSS_ENCODER_IMPORT_ERROR}" if _CROSS_ENCODER_IMPORT_ERROR else ""
             raise ImportError(
@@ -101,6 +105,7 @@ class Reranker:
         Returns:
             按相关性降序排列的段落列表，新增 "rerank_score" 字段
         """
+
         if not passages:
             return []
 
@@ -132,6 +137,7 @@ class Reranker:
             return self._fallback_rerank(query, passages, top_k)
 
     def _fallback_rerank(self, query: str, passages: List[Dict], top_k: int) -> List[Dict]:
+        """内部辅助方法 ``_fallback_rerank``；参数与返回值见类型注解。"""
         scored_passages = []
         for i, passage in enumerate(passages):
             item = dict(passage)
@@ -150,5 +156,6 @@ def rerank(
     """
     便捷函数：快速重排序
     """
+
     r = Reranker(model_name=model_name)
     return r.rerank(query, passages, top_k=top_k)

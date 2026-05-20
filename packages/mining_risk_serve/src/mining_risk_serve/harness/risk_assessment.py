@@ -15,6 +15,7 @@ logger = get_logger(__name__)
 
 class RiskAssessmentResult(BaseModel):
     """三维风险评估结果"""
+
     severity: str = Field(description="后果严重度：极高/高/中/低")
     relevance: str = Field(description="利益相关性：极高/高/中/低")
     irreversibility: str = Field(description="执行不可逆性：极高/高/中/低")
@@ -30,6 +31,7 @@ class RiskAssessor:
     结合 SOP 加权规则计算风险总分，超阈值触发分级审核
     """
 
+
     # 四维评分映射（极高/高/中/低）
     SCORE_MAP: Dict[str, int] = {"极高": 4, "高": 3, "中": 2, "低": 1}
 
@@ -44,12 +46,14 @@ class RiskAssessor:
     BLOCK_THRESHOLD: float = 2.5
 
     def __init__(self, threshold: Optional[float] = None):
+        """初始化 RiskAssessor；参数含义见类型注解与类文档。"""
         self.threshold = threshold or self.BLOCK_THRESHOLD
 
     def assess(self, decision: Dict[str, Any]) -> RiskAssessmentResult:
         """
         对决策进行三维风险评估
         """
+
         level = decision.get("predicted_level", "四级")
 
         # 根据风险等级映射三维评分
@@ -88,6 +92,7 @@ class RiskAssessor:
         """
         对工具调用进行快速风险评估（供 ToolCallInterceptor 使用）
         """
+
         high_risk_tools = ["delete", "destroy", "shutdown", "rollback", "drop", "wipe"]
         medium_risk_tools = ["write", "update", "modify", "append"]
 
@@ -121,6 +126,7 @@ class RiskAssessor:
 
     def _map_level_to_dimension(self, level: str, dimension: str) -> str:
         """将风险等级映射到三维评分"""
+
         mapping = {
             "一级": {"severity": "极高", "relevance": "极高", "irreversibility": "极高"},
             "二级": {"severity": "高", "relevance": "高", "irreversibility": "高"},
@@ -135,6 +141,7 @@ class RiskAssessor:
 
     def _score_to_level(self, score: float) -> str:
         """将加权总分映射到风险分级"""
+
         if score >= 3.5:
             return "EXTREME"
         elif score >= 2.5:

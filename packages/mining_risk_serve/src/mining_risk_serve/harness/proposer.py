@@ -11,18 +11,26 @@ logger = get_logger(__name__)
 
 
 class Proposer:
-    """
-    Proposer：将 LLMChain 输出的决策拆分为 JSON 原子命题列表
-    """
+    """Proposer 节点：将 LLM 决策 JSON 拆解为 MARCH 校验用的原子命题列表。"""
+
 
     @staticmethod
     def decompose(decision: Dict[str, Any]) -> List[Dict[str, str]]:
-        """
-        将决策拆解为原子命题列表
+        """将结构化决策拆解为原子命题列表。
+
+        按风险定级、政府干预、企业管控、SHAP 归因、概率分布等维度生成
+        带 ``id`` / ``proposition`` / ``category`` 的命题条目，供后续
+        MARCH 三重隔离校验逐条验证。
+
+        Args:
+            decision (Dict[str, Any]): 决策字典，需包含 ``predicted_level``、
+                ``government_advice``、``enterprise_advice`` 等可选字段。
 
         Returns:
-            原子命题列表，每个包含 {id, proposition, category}
+            List[Dict[str, str]]: 原子命题列表，每项含 ``id``、``proposition``、
+                ``category`` 三个键。
         """
+
         propositions = []
 
         # 拆解风险等级判定
@@ -76,10 +84,29 @@ class Proposer:
 
     @staticmethod
     def to_json(propositions: List[Dict[str, str]]) -> str:
-        """将原子命题列表序列化为 JSON 字符串"""
+        """将原子命题列表序列化为 JSON 字符串。
+
+        Args:
+            propositions (List[Dict[str, str]]): ``decompose`` 输出的命题列表。
+
+        Returns:
+            str: UTF-8、缩进为 2 的 JSON 文本（``ensure_ascii=False``）。
+        """
+
         return json.dumps(propositions, ensure_ascii=False, indent=2)
 
     @staticmethod
     def from_json(json_str: str) -> List[Dict[str, str]]:
-        """从 JSON 字符串反序列化为原子命题列表"""
+        """从 JSON 字符串反序列化为原子命题列表。
+
+        Args:
+            json_str (str): ``to_json`` 生成的 JSON 文本。
+
+        Returns:
+            List[Dict[str, str]]: 解析后的命题列表。
+
+        Raises:
+            json.JSONDecodeError: JSON 格式非法时由 ``json.loads`` 抛出。
+        """
+
         return json.loads(json_str)

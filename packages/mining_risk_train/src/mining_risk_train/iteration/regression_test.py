@@ -23,6 +23,7 @@ logger = get_logger(__name__)
 
 def _model_predict_to_indices(model: StackingRiskModel, X: pd.DataFrame) -> np.ndarray:
     """将模型预测结果转为类别索引数组"""
+
     results = model.predict(X)
     if isinstance(results, dict):
         results = [results]
@@ -40,12 +41,14 @@ class RegressionTester:
     在同源测试集上对比新旧模型性能
     """
 
+
     def __init__(
         self,
         old_model_path: Optional[str] = None,
         new_model_path: Optional[str] = None,
         test_data_path: Optional[str] = None,
     ):
+        """初始化 RegressionTester；参数含义见类型注解与类文档。"""
         config = get_config()
         self.old_model_path = old_model_path or config.model.stacking.model_path
         self.new_model_path = new_model_path
@@ -53,12 +56,14 @@ class RegressionTester:
 
     def _load_model(self, path: str) -> StackingRiskModel:
         """加载模型"""
+
         model = StackingRiskModel()
         model.load(path)
         return model
 
     def _compute_shap_importance(self, model: StackingRiskModel, X: pd.DataFrame) -> np.ndarray:
         """计算 SHAP 特征重要性（取绝对值均值）"""
+
         try:
             meta_features = model._generate_meta_features(X)
             if model.shap_explainer is not None:
@@ -92,6 +97,7 @@ class RegressionTester:
         Returns:
             回归测试报告字典
         """
+
         if self.new_model_path is None or not os.path.exists(self.new_model_path):
             raise FileNotFoundError(f"新模型不存在: {self.new_model_path}")
         if not os.path.exists(self.old_model_path):
@@ -185,6 +191,7 @@ class RegressionTester:
 
     def _try_auc(self, y_true, y_pred) -> float:
         """尝试计算 AUC，多分类使用 OvR"""
+
         try:
             from sklearn.preprocessing import label_binarize
             classes = np.unique(y_true)
@@ -204,6 +211,7 @@ class RegressionTester:
 
 def main():
     """命令行入口"""
+
     import argparse
     parser = argparse.ArgumentParser(description="回归测试")
     parser.add_argument("--old", required=True, help="旧模型路径")

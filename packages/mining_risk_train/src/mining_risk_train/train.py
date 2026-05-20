@@ -28,6 +28,7 @@ if TYPE_CHECKING:
 
 class StrictTimeSeriesSplit:
     """
+
     严格时序交叉验证分割器
     
     按指定时间列排序后，将数据切分为 n_splits+1 份，
@@ -36,11 +37,13 @@ class StrictTimeSeriesSplit:
     """
 
     def __init__(self, n_splits: int = 5, time_col: Optional[str] = None):
+        """初始化 StrictTimeSeriesSplit；参数含义见类型注解与类文档。"""
         self.n_splits = n_splits
         self.time_col = time_col
 
     def split(self, X: pd.DataFrame, y=None, groups=None):
         """生成时序交叉验证的 train/test 索引"""
+
         n_samples = len(X)
         if n_samples < self.n_splits + 1:
             raise ValueError(f"样本数 {n_samples} 必须大于 n_splits+1={self.n_splits+1}")
@@ -61,11 +64,23 @@ class StrictTimeSeriesSplit:
             yield train_idx, test_idx
 
     def get_n_splits(self, X=None, y=None, groups=None):
+        """
+                返回交叉验证折数。
+            
+                Args:
+                    X (Any, optional): 特征矩阵，可忽略。
+                    y (Any, optional): 标签，可忽略。
+                    groups (Any, optional): 分组，可忽略。
+            
+                Returns:
+                    int: 折数 n_splits。
+        """
         return self.n_splits
 
 
 def load_and_merge_data(raw_path: Optional[str] = None) -> pd.DataFrame:
     """加载并合并企业多表数据"""
+
     loader = DataLoader(raw_data_path=raw_path)
     tables = loader.load_directory()
     if not tables:
@@ -104,6 +119,7 @@ def load_and_merge_data(raw_path: Optional[str] = None) -> pd.DataFrame:
 
 def sort_by_time(df: pd.DataFrame, preferred_time_col: Optional[str] = None) -> pd.DataFrame:
     """按时间列严格排序，确保时序一致性"""
+
     time_candidates = [preferred_time_col] if preferred_time_col else []
     time_candidates.extend(["report_time", "时间戳", "创建时间", "登记时间", "检查时间", "timestamp", "create_time"])
     # 去重并过滤空值
@@ -126,6 +142,7 @@ def prepare_features(df: pd.DataFrame, pipeline_path: Optional[str] = None) -> T
     Returns:
         (特征矩阵, 目标向量)
     """
+
     config = get_config()
     target_col = config.features.target_column
     if target_col not in df.columns:
@@ -177,6 +194,7 @@ def split_data(
     Returns:
         {"train": (X_train, y_train), "val": (X_val, y_val), "test": (X_test, y_test)}
     """
+
     n = len(X)
     train_end = int(n * train_ratio)
     val_end = int(n * (train_ratio + val_ratio))
@@ -201,6 +219,7 @@ def evaluate_model(
     dataset_name: str = "test",
 ) -> Dict[str, float]:
     """评估模型性能"""
+
     results = model.predict(X)
     if isinstance(results, dict):
         results = [results]
@@ -243,6 +262,7 @@ def train_and_save(
     Returns:
         训练好的 StackingRiskModel
     """
+
     config = get_config()
     raw_data_path = raw_data_path or config.data.raw_data_path
     model_path = model_path or config.model.stacking.model_path

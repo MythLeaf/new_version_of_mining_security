@@ -18,11 +18,13 @@ TRIGGER_REASON_PERFORMANCE = "PERFORMANCE_DEGRADED"
 def utc_now_iso() -> str:
     """Return an ISO timestamp that sorts lexicographically in SQLite."""
 
+
     return datetime.now(timezone.utc).isoformat()
 
 
 def build_iteration_id(batch_id: str, timestamp: Optional[float] = None) -> str:
     """Build a stable, readable id for one data-ingestion iteration run."""
+
 
     millis = int((timestamp or time.time()) * 1000)
     return f"iter_{batch_id}_{millis}"
@@ -32,6 +34,7 @@ def build_iteration_id(batch_id: str, timestamp: Optional[float] = None) -> str:
 class TimelineEvent:
     """One frontend-friendly iteration timeline event."""
 
+
     event: str
     status: str
     timestamp: str
@@ -39,10 +42,27 @@ class TimelineEvent:
     details: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
+        """
+        to dict。
+
+        Returns:
+                (Dict[str, Any]): 函数返回值。
+        """
+
         return asdict(self)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "TimelineEvent":
+        """
+        from dict。
+
+        Args:
+                data (Dict[str, Any]): 参数 ``data``。
+
+        Returns:
+                ('TimelineEvent'): 函数返回值。
+        """
+
         return cls(
             event=str(data["event"]),
             status=str(data.get("status", "")),
@@ -55,6 +75,7 @@ class TimelineEvent:
 @dataclass
 class IterationRecord:
     """Unified model-iteration status after a data batch is ingested."""
+
 
     iteration_id: str
     batch_id: str
@@ -75,6 +96,13 @@ class IterationRecord:
 
     @property
     def batch(self) -> Dict[str, Any]:
+        """
+        batch。
+
+        Returns:
+                (Dict[str, Any]): 函数返回值。
+        """
+
         return {
             "batch_id": self.batch_id,
             "data_source": self.data_source,
@@ -85,6 +113,13 @@ class IterationRecord:
 
     @property
     def thresholds(self) -> Dict[str, Any]:
+        """
+        thresholds。
+
+        Returns:
+                (Dict[str, Any]): 函数返回值。
+        """
+
         return {
             "risk_sample_count": self.trigger_threshold_samples,
             "recent_f1": self.trigger_threshold_f1,
@@ -92,6 +127,13 @@ class IterationRecord:
 
     @property
     def next_actions(self) -> List[Dict[str, Any]]:
+        """
+        next actions。
+
+        Returns:
+                (List[Dict[str, Any]]): 函数返回值。
+        """
+
         configured_actions = self.metadata.get("next_actions")
         if isinstance(configured_actions, list):
             return configured_actions
@@ -160,6 +202,13 @@ class IterationRecord:
         ]
 
     def to_dict(self) -> Dict[str, Any]:
+        """
+        to dict。
+
+        Returns:
+                (Dict[str, Any]): 函数返回值。
+        """
+
         return {
             "iteration_id": self.iteration_id,
             "batch_id": self.batch_id,
@@ -206,6 +255,16 @@ class IterationRecord:
 
     @classmethod
     def from_row(cls, row: sqlite3.Row) -> "IterationRecord":
+        """
+        from row。
+
+        Args:
+                row (sqlite3.Row): 参数 ``row``。
+
+        Returns:
+                ('IterationRecord'): 函数返回值。
+        """
+
         row_keys = row.keys()
         return cls(
             iteration_id=row["iteration_id"],
@@ -236,11 +295,19 @@ class IterationRecord:
 class IterationState:
     """Current state snapshot for APIs that need the latest record."""
 
+
     current_status: str
     latest_iteration_id: Optional[str] = None
     latest_record: Optional[IterationRecord] = None
 
     def to_dict(self) -> Dict[str, Any]:
+        """
+        to dict。
+
+        Returns:
+                (Dict[str, Any]): 函数返回值。
+        """
+
         return {
             "current_status": self.current_status,
             "latest_iteration_id": self.latest_iteration_id,
@@ -251,20 +318,27 @@ class IterationState:
 class IterationStateStore:
     """SQLite repository for iteration records."""
 
+
     def __init__(self, db_path: str):
+        """初始化 IterationStateStore；参数含义见类型注解与类文档。"""
         self.db_path = db_path
 
     def _get_conn(self) -> sqlite3.Connection:
+        """内部辅助方法 ``_get_conn``；参数与返回值见类型注解。"""
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         return conn
 
     def ensure_tables(self) -> None:
+        """
+        ensure tables。
+        """
+
         conn = self._get_conn()
         cursor = conn.cursor()
         cursor.execute(
-            """
+        """
             CREATE TABLE IF NOT EXISTS iteration_records (
                 iteration_id TEXT PRIMARY KEY,
                 batch_id TEXT NOT NULL,
@@ -284,7 +358,8 @@ class IterationStateStore:
                 metadata_json TEXT DEFAULT '{}',
                 archived INTEGER NOT NULL DEFAULT 0
             )
-            """
+        """
+
         )
         cursor.execute("PRAGMA table_info(iteration_records)")
         columns = {row["name"] for row in cursor.fetchall()}
@@ -297,26 +372,38 @@ class IterationStateStore:
                 "ALTER TABLE iteration_records ADD COLUMN archived INTEGER NOT NULL DEFAULT 0"
             )
         cursor.execute(
-            """
+        """
             CREATE INDEX IF NOT EXISTS idx_iteration_records_updated_at
             ON iteration_records(updated_at)
-            """
+        """
+
         )
         cursor.execute(
-            """
+        """
             CREATE INDEX IF NOT EXISTS idx_iteration_records_batch_updated
             ON iteration_records(batch_id, updated_at)
-            """
+        """
+
         )
         conn.commit()
         conn.close()
 
     def save_record(self, record: IterationRecord) -> IterationRecord:
+        """
+        save record。
+
+        Args:
+                record (IterationRecord): 参数 ``record``。
+
+        Returns:
+                (IterationRecord): 函数返回值。
+        """
+
         self.ensure_tables()
         conn = self._get_conn()
         cursor = conn.cursor()
         cursor.execute(
-            """
+        """
             INSERT INTO iteration_records
             (iteration_id, batch_id, data_source_json, sample_count, risk_sample_count,
              recent_f1, trigger_threshold_samples, trigger_threshold_f1, triggered,
@@ -338,7 +425,7 @@ class IterationStateStore:
                 report_path=excluded.report_path,
                 updated_at=excluded.updated_at,
                 metadata_json=excluded.metadata_json
-            """,
+        """,
             (
                 record.iteration_id,
                 record.batch_id,
@@ -363,6 +450,16 @@ class IterationStateStore:
         return record
 
     def get_record(self, iteration_id: str) -> Optional[IterationRecord]:
+        """
+
+        get record。
+
+        Args:
+                iteration_id (str): 参数 ``iteration_id``。
+
+        Returns:
+                (Optional[IterationRecord]): 函数返回值。
+        """
         self.ensure_tables()
         conn = self._get_conn()
         cursor = conn.cursor()
@@ -375,33 +472,52 @@ class IterationStateStore:
         return IterationRecord.from_row(row) if row else None
 
     def get_latest_record(self) -> Optional[IterationRecord]:
+        """
+
+        get latest record。
+
+        Returns:
+                (Optional[IterationRecord]): 函数返回值。
+        """
         self.ensure_tables()
         conn = self._get_conn()
         cursor = conn.cursor()
         cursor.execute(
-            """
+        """
+
             SELECT * FROM iteration_records
             WHERE COALESCE(archived, 0) = 0
             ORDER BY updated_at DESC, iteration_id DESC
             LIMIT 1
-            """
+        """
         )
         row = cursor.fetchone()
         conn.close()
         return IterationRecord.from_row(row) if row else None
 
     def get_latest_for_batch(self, batch_id: str) -> Optional[IterationRecord]:
+        """
+
+        get latest for batch。
+
+        Args:
+                batch_id (str): 参数 ``batch_id``。
+
+        Returns:
+                (Optional[IterationRecord]): 函数返回值。
+        """
         self.ensure_tables()
         conn = self._get_conn()
         cursor = conn.cursor()
         cursor.execute(
-            """
+        """
+
             SELECT * FROM iteration_records
             WHERE batch_id = ?
               AND COALESCE(archived, 0) = 0
             ORDER BY updated_at DESC, iteration_id DESC
             LIMIT 1
-            """,
+        """,
             (batch_id,),
         )
         row = cursor.fetchone()
@@ -409,6 +525,13 @@ class IterationStateStore:
         return IterationRecord.from_row(row) if row else None
 
     def get_state(self) -> IterationState:
+        """
+
+        get state。
+
+        Returns:
+                (IterationState): 函数返回值。
+        """
         latest = self.get_latest_record()
         return IterationState(
             current_status=latest.current_status if latest else "IDLE",
@@ -419,15 +542,17 @@ class IterationStateStore:
     def archive_active_records(self, *, reason: str = "demo reset") -> int:
         """Hide current demo records from latest-status APIs without deleting audit history."""
 
+
         self.ensure_tables()
         conn = self._get_conn()
         cursor = conn.cursor()
         now = utc_now_iso()
         cursor.execute(
-            """
+        """
             SELECT * FROM iteration_records
             WHERE COALESCE(archived, 0) = 0
-            """
+        """
+
         )
         rows = cursor.fetchall()
         archived_count = 0
@@ -473,6 +598,13 @@ def build_timeline(
     timestamp: str,
     blocked_gates: Optional[List[str]] = None,
 ) -> List[TimelineEvent]:
+    """
+
+    build timeline。
+
+        Returns:
+            (List[TimelineEvent]): 函数返回值。
+    """
     blocked_gates = blocked_gates or []
     timeline = [
         TimelineEvent(

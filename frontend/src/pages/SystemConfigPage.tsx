@@ -1,4 +1,4 @@
-import { apiBase, fetchHealth } from "../api/client";
+import { apiBase, fetchHealth, listKnowledge, readKnowledge } from "../api/client";
 import { SCENARIO_CONFIG, SCENARIO_NAMES } from "../data/demoData";
 import type { HealthResponse, ScenarioId } from "../api/types";
 import { useEffect, useMemo, useState } from "react";
@@ -159,10 +159,38 @@ const API_TABLE = [
 
 export default function SystemConfigPage({ scenario, health }: Props) {
   const [latestHealth, setLatestHealth] = useState<HealthResponse | null>(health);
+  const [knowledgeFiles, setKnowledgeFiles] = useState<string[]>(KNOWLEDGE_FILES);
+  const [previewFile, setPreviewFile] = useState<string | null>(null);
+  const [previewContent, setPreviewContent] = useState<string>("");
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchHealth().then(setLatestHealth);
+    listKnowledge().then((files) => {
+      if (files.length > 0) setKnowledgeFiles(files);
+    });
   }, []);
+
+  async function openKnowledgePreview(filename: string) {
+    setPreviewFile(filename);
+    setPreviewLoading(true);
+    setPreviewError(null);
+    setPreviewContent("");
+    const content = await readKnowledge(filename);
+    setPreviewLoading(false);
+    if (content === null) {
+      setPreviewError("无法读取该文件，请确认后端已启动且文件存在。");
+      return;
+    }
+    setPreviewContent(content);
+  }
+
+  function closeKnowledgePreview() {
+    setPreviewFile(null);
+    setPreviewContent("");
+    setPreviewError(null);
+  }
 
   const cfg = SCENARIO_CONFIG[scenario];
   const online = latestHealth?.status === "healthy";
@@ -281,12 +309,20 @@ export default function SystemConfigPage({ scenario, health }: Props) {
         </div>
         <div>
           <div className="subtitle">核心知识库矩阵</div>
+          <p className="knowledge-matrix-hint">
+            点击文件名可预览 Markdown 内容（需后端在线）。
+          </p>
           <div className="knowledge-matrix">
-            {KNOWLEDGE_FILES.map((file) => (
-              <div className="knowledge-file" key={file}>
-                <span className="knowledge-file-dot" />
+            {knowledgeFiles.map((file) => (
+              <button
+                type="button"
+                key={file}
+                className="knowledge-file"
+                onClick={() => openKnowledgePreview(file)}
+              >
+                <span className="knowledge-file-dot" aria-hidden="true" />
                 <span>{file}</span>
-              </div>
+              </button>
             ))}
           </div>
         </div>
@@ -332,6 +368,39 @@ export default function SystemConfigPage({ scenario, health }: Props) {
 
       <div className="divider" />
       <div className="subtitle">系统运行信息</div>
+      {previewFile && (
+        <div
+          className="knowledge-preview-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="knowledge-preview-title"
+        >
+          <div className="knowledge-preview-panel">
+            <div className="knowledge-preview-header">
+              <h3 id="knowledge-preview-title" className="knowledge-preview-title">
+                {previewFile}
+              </h3>
+              <button
+                type="button"
+                className="scada-btn secondary"
+                onClick={closeKnowledgePreview}
+              >
+                关闭
+              </button>
+            </div>
+            {previewLoading && (
+              <div className="empty-state">正在加载知识库内容…</div>
+            )}
+            {previewError && (
+              <div className="alert error">{previewError}</div>
+            )}
+            {!previewLoading && !previewError && (
+              <pre className="knowledge-preview-body">{previewContent}</pre>
+            )}
+          </div>
+        </div>
+      )}
+
       <JsonView
         data={{
           backend_status: latestHealth?.status ?? "unknown",

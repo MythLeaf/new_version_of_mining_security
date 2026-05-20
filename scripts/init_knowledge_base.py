@@ -114,11 +114,25 @@ def load_dataframes(files: Dict[str, str]) -> Dict[str, pd.DataFrame]:
 
 
 def _ensure_kb_dir(kb_dir: str) -> None:
+    """
+    内部 ensure kb dir。
+
+        Args:
+            kb_dir (str): 参数 ``kb_dir``。
+    """
     os.makedirs(kb_dir, exist_ok=True)
     os.makedirs(os.path.join(kb_dir, "raw_texts"), exist_ok=True)
 
 
 def _write_md(kb_dir: str, filename: str, content: str) -> None:
+    """
+    内部 write md。
+
+        Args:
+            kb_dir (str): 参数 ``kb_dir``。
+            filename (str): 参数 ``filename``。
+            content (str): 参数 ``content``。
+    """
     path = os.path.join(kb_dir, filename)
     with open(path, "w", encoding="utf-8") as f:
         f.write(content)
@@ -126,6 +140,16 @@ def _write_md(kb_dir: str, filename: str, content: str) -> None:
 
 
 def _read_existing_md(kb_dir: str, filename: str) -> str:
+    """
+    内部 read existing md。
+
+        Args:
+            kb_dir (str): 参数 ``kb_dir``。
+            filename (str): 参数 ``filename``。
+
+        Returns:
+            (str): 函数返回值。
+    """
     path = os.path.join(kb_dir, filename)
     if os.path.exists(path):
         with open(path, "r", encoding="utf-8") as f:
@@ -699,6 +723,9 @@ def extract_feature_metadata(data_dir: str) -> str:
 
 
 def main():
+    """
+    main。
+    """
     parser = argparse.ArgumentParser(description="初始化/增量更新知识库")
     parser.add_argument("--data-dir", type=str, default="datasets/raw/public", help="企业CSV数据根目录")
     parser.add_argument("--kb-dir", type=str, default="knowledge_base", help="知识库输出目录")

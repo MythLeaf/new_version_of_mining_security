@@ -22,6 +22,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         app: FastAPI 应用实例。
     """
 
+
     @app.exception_handler(MiningRiskAgentException)
     async def mining_risk_agent_handler(
         request: Request,

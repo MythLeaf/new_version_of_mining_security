@@ -105,6 +105,7 @@ SCENARIO_NAMES = {
 
 def generate_mock_decision(scenario_id: str, enterprise_id: str = "ENT-DEMO") -> Dict[str, Any]:
     """
+
     当 GLM-5 API 不可用时，返回完整 Mock 决策 JSON
     不同场景的阈值、风险等级、决策建议均有差异
     """
@@ -119,6 +120,7 @@ def generate_mock_decision(scenario_id: str, enterprise_id: str = "ENT-DEMO") ->
 
 
 def _mock_chemical(enterprise_id: str) -> Dict[str, Any]:
+    """内部辅助方法 ``_mock_chemical``；参数与返回值见类型注解。"""
     return {
         "enterprise_id": enterprise_id,
         "scenario_id": "chemical",
@@ -181,6 +183,7 @@ def _mock_chemical(enterprise_id: str) -> Dict[str, Any]:
 
 
 def _mock_metallurgy(enterprise_id: str) -> Dict[str, Any]:
+    """内部辅助方法 ``_mock_metallurgy``；参数与返回值见类型注解。"""
     return {
         "enterprise_id": enterprise_id,
         "scenario_id": "metallurgy",
@@ -243,6 +246,7 @@ def _mock_metallurgy(enterprise_id: str) -> Dict[str, Any]:
 
 
 def _mock_dust(enterprise_id: str) -> Dict[str, Any]:
+    """内部辅助方法 ``_mock_dust``；参数与返回值见类型注解。"""
     return {
         "enterprise_id": enterprise_id,
         "scenario_id": "dust",
@@ -306,6 +310,7 @@ def _mock_dust(enterprise_id: str) -> Dict[str, Any]:
 
 def get_demo_data_json(scenario_id: str) -> str:
     """返回指定场景的模拟企业数据 JSON 字符串"""
+
     import json
     data = DEMO_ENTERPRISES.get(scenario_id, DEMO_CHEMICAL)
     return json.dumps(data, ensure_ascii=False, indent=2)
@@ -313,4 +318,5 @@ def get_demo_data_json(scenario_id: str) -> str:
 
 def get_demo_data_dict(scenario_id: str) -> Dict[str, Any]:
     """返回指定场景的模拟企业数据字典"""
+
     return DEMO_ENTERPRISES.get(scenario_id, DEMO_CHEMICAL).copy()

@@ -25,6 +25,10 @@ UPLOAD_DIR = resolve_project_path(Path(get_config().paths.var_root) / "uploads")
 
 
 class DataUploadResponse(BaseModel):
+    """
+
+    DataUploadResponse 类。
+    """
     success: bool
     message: str
     rows: int = 0
@@ -39,11 +43,16 @@ class DataUploadResponse(BaseModel):
 
 
 class BatchUploadRequest(BaseModel):
+    """
+
+    BatchUploadRequest 类。
+    """
     records: List[Dict[str, Any]]
     enterprise_id: Optional[str] = None
 
 
 def _safe_filename(filename: str) -> str:
+    """内部辅助方法 ``_safe_filename``；参数与返回值见类型注解。"""
     stem = Path(filename or "upload").stem
     suffix = Path(filename or "").suffix.lower()
     safe_stem = re.sub(r"[^0-9A-Za-z._\-\u4e00-\u9fff]+", "_", stem).strip("._")
@@ -51,6 +60,7 @@ def _safe_filename(filename: str) -> str:
 
 
 def _data_format_from_filename(filename: str) -> str:
+    """内部辅助方法 ``_data_format_from_filename``；参数与返回值见类型注解。"""
     suffix = Path(filename or "").suffix.lower()
     if suffix in {".xlsx", ".xls"}:
         return "excel"
@@ -60,6 +70,7 @@ def _data_format_from_filename(filename: str) -> str:
 
 
 def _persist_upload_bytes(content: bytes, filename: str, enterprise_id: str) -> Dict[str, Any]:
+    """内部辅助方法 ``_persist_upload_bytes``；参数与返回值见类型注解。"""
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     checksum = hashlib.sha256(content).hexdigest()
     safe_name = _safe_filename(filename)
@@ -75,6 +86,7 @@ def _persist_upload_bytes(content: bytes, filename: str, enterprise_id: str) -> 
 
 
 def _persist_records(df: pd.DataFrame, upload_path: Path) -> Path:
+    """内部辅助方法 ``_persist_records``；参数与返回值见类型注解。"""
     record_path = upload_path.with_suffix(upload_path.suffix + ".records.jsonl")
     df.to_json(record_path, orient="records", lines=True, force_ascii=False)
     if not record_path.exists() or (record_path.stat().st_size == 0 and len(df) > 0):
@@ -83,6 +95,7 @@ def _persist_records(df: pd.DataFrame, upload_path: Path) -> Path:
 
 
 def _display_path(path: Path) -> str:
+    """内部辅助方法 ``_display_path``；参数与返回值见类型注解。"""
     try:
         return str(path.relative_to(resolve_project_path(".")))
     except ValueError:
@@ -95,6 +108,7 @@ async def upload_data(
     enterprise_id: Optional[str] = Form(None),
 ) -> DataUploadResponse:
     """上传数据文件（CSV/Excel/JSON）。"""
+
     try:
         content = await file.read()
         enterprise = enterprise_id or "unknown"
@@ -128,6 +142,7 @@ async def upload_data(
 @router.post("/upload/batch", response_model=DataUploadResponse)
 async def upload_batch(request: BatchUploadRequest) -> DataUploadResponse:
     """批量上传企业数据（JSON 格式）。"""
+
     try:
         df = pd.DataFrame(request.records)
         enterprise = request.enterprise_id or "unknown"

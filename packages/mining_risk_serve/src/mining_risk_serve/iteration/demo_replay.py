@@ -34,6 +34,7 @@ logger = get_logger(__name__)
 class DemoReplayService:
     """Evaluate demo batches and leave a traceable backend replay record."""
 
+
     def __init__(
         self,
         data_source: Optional[EnterpriseDataSource] = None,
@@ -42,6 +43,7 @@ class DemoReplayService:
         sample_threshold: Optional[int] = None,
         f1_threshold: Optional[float] = None,
     ):
+        """初始化 DemoReplayService；参数含义见类型注解与类文档。"""
         config = get_config()
         self.data_source = data_source or build_enterprise_data_source()
         configured_db_path = db_path or config.iteration.monitor.db_path or config.audit.db_path
@@ -53,16 +55,18 @@ class DemoReplayService:
         self.state_store = IterationStateStore(self.db_path)
 
     def _get_conn(self) -> sqlite3.Connection:
+        """内部辅助方法 ``_get_conn``；参数与返回值见类型注解。"""
         os.makedirs(os.path.dirname(self.db_path) or ".", exist_ok=True)
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         return conn
 
     def _ensure_tables(self) -> None:
+        """内部辅助方法 ``_ensure_tables``；参数与返回值见类型注解。"""
         conn = self._get_conn()
         cursor = conn.cursor()
         cursor.execute(
-            """
+        """
             CREATE TABLE IF NOT EXISTS demo_replay_runs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp REAL NOT NULL,
@@ -76,7 +80,8 @@ class DemoReplayService:
                 metadata_json TEXT NOT NULL,
                 archived INTEGER NOT NULL DEFAULT 0
             )
-            """
+        """
+
         )
         cursor.execute("PRAGMA table_info(demo_replay_runs)")
         columns = {row["name"] for row in cursor.fetchall()}
@@ -89,12 +94,39 @@ class DemoReplayService:
         self.state_store.ensure_tables()
 
     def list_batches(self) -> List[Dict[str, Any]]:
+        """
+        list batches。
+
+        Returns:
+                (List[Dict[str, Any]]): 函数返回值。
+        """
+
         return [batch.to_dict() for batch in self.data_source.list_batches()]
 
     def load_batch(self, batch_id: str) -> EnterpriseDataBatch:
+        """
+        load batch。
+
+        Args:
+                batch_id (str): 参数 ``batch_id``。
+
+        Returns:
+                (EnterpriseDataBatch): 函数返回值。
+        """
+
         return self.data_source.load_batch(batch_id)
 
     def evaluate_batch(self, batch: EnterpriseDataBatch) -> Dict[str, Any]:
+        """
+        evaluate batch。
+
+        Args:
+                batch (EnterpriseDataBatch): 参数 ``batch``。
+
+        Returns:
+                (Dict[str, Any]): 函数返回值。
+        """
+
         metadata = batch.metadata
         trigger_reasons: List[str] = []
         blocked_gates: List[str] = []
@@ -139,6 +171,16 @@ class DemoReplayService:
         }
 
     def replay_batch(self, batch_id: str) -> Dict[str, Any]:
+        """
+        replay batch。
+
+        Args:
+                batch_id (str): 参数 ``batch_id``。
+
+        Returns:
+                (Dict[str, Any]): 函数返回值。
+        """
+
         self._ensure_tables()
         batch = self.load_batch(batch_id)
         monitor_details = self._record_monitor_inputs(batch)
@@ -168,6 +210,7 @@ class DemoReplayService:
         records_preview: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         """Persist one uploaded enterprise batch through the same iteration gates."""
+
 
         self._ensure_tables()
         batch = EnterpriseDataBatch(
@@ -207,6 +250,7 @@ class DemoReplayService:
         return report
 
     def _record_monitor_inputs(self, batch: EnterpriseDataBatch) -> Dict[str, Any]:
+        """内部辅助方法 ``_record_monitor_inputs``；参数与返回值见类型注解。"""
         metadata = batch.metadata
         monitor = ModelMonitor(
             db_path=self.db_path,
@@ -237,6 +281,7 @@ class DemoReplayService:
         evaluation: Dict[str, Any],
         data_source: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
+        """内部辅助方法 ``_build_report``；参数与返回值见类型注解。"""
         return {
             "data_source": data_source or self.data_source.describe(),
             "metadata": batch.metadata.to_dict(),
@@ -253,6 +298,7 @@ class DemoReplayService:
         report_path: Path,
         data_source: Optional[Dict[str, Any]] = None,
     ) -> IterationRecord:
+        """内部辅助方法 ``_record_iteration``；参数与返回值见类型注解。"""
         metadata = batch.metadata
         timestamp = time.time()
         now = utc_now_iso()
@@ -317,6 +363,7 @@ class DemoReplayService:
         return self.state_store.save_record(record)
 
     def _write_report(self, report: Dict[str, Any]) -> Path:
+        """内部辅助方法 ``_write_report``；参数与返回值见类型注解。"""
         self.reports_dir.mkdir(parents=True, exist_ok=True)
         batch_id = report["metadata"]["batch_id"]
         output_path = self.reports_dir / f"{batch_id}_report.json"
@@ -330,15 +377,16 @@ class DemoReplayService:
         evaluation: Dict[str, Any],
         report_path: Path,
     ) -> None:
+        """内部辅助方法 ``_record_run``；参数与返回值见类型注解。"""
         conn = self._get_conn()
         cursor = conn.cursor()
         cursor.execute(
-            """
+        """
             INSERT INTO demo_replay_runs
             (timestamp, batch_id, status, retrain_required, blocked,
              trigger_reasons, blocked_gates, report_path, metadata_json)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
+        """,
             (
                 time.time(),
                 batch.metadata.batch_id,
@@ -355,12 +403,23 @@ class DemoReplayService:
         conn.close()
 
     def latest_run(self, batch_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """
+
+        latest run。
+
+        Args:
+                batch_id (Optional[str]): 参数 ``batch_id``。
+
+        Returns:
+                (Optional[Dict[str, Any]]): 函数返回值。
+        """
         self._ensure_tables()
         conn = self._get_conn()
         cursor = conn.cursor()
         if batch_id:
             cursor.execute(
                 """
+
                 SELECT * FROM demo_replay_runs
                 WHERE batch_id = ?
                   AND COALESCE(archived, 0) = 0
@@ -372,6 +431,7 @@ class DemoReplayService:
         else:
             cursor.execute(
                 """
+
                 SELECT * FROM demo_replay_runs
                 WHERE COALESCE(archived, 0) = 0
                 ORDER BY id DESC
@@ -393,16 +453,18 @@ class DemoReplayService:
     def reset_demo_state(self) -> Dict[str, Any]:
         """Archive current demo run state while keeping source demo batches and reports on disk."""
 
+
         self._ensure_tables()
         archived_iterations = self.state_store.archive_active_records(reason="demo reset")
         conn = self._get_conn()
         cursor = conn.cursor()
         cursor.execute(
-            """
+        """
             UPDATE demo_replay_runs
             SET archived = 1
             WHERE COALESCE(archived, 0) = 0
-            """
+        """
+
         )
         archived_runs = cursor.rowcount
         conn.commit()
@@ -417,14 +479,41 @@ class DemoReplayService:
         }
 
     def latest_iteration_record(self) -> Optional[Dict[str, Any]]:
+        """
+        latest iteration record。
+
+        Returns:
+                (Optional[Dict[str, Any]]): 函数返回值。
+        """
+
         record = self.state_store.get_latest_record()
         return record.to_dict() if record else None
 
     def get_iteration_record(self, iteration_id: str) -> Optional[Dict[str, Any]]:
+        """
+        get iteration record。
+
+        Args:
+                iteration_id (str): 参数 ``iteration_id``。
+
+        Returns:
+                (Optional[Dict[str, Any]]): 函数返回值。
+        """
+
         record = self.state_store.get_record(iteration_id)
         return record.to_dict() if record else None
 
     def get_iteration_timeline(self, iteration_id: str) -> Optional[Dict[str, Any]]:
+        """
+        get iteration timeline。
+
+        Args:
+                iteration_id (str): 参数 ``iteration_id``。
+
+        Returns:
+                (Optional[Dict[str, Any]]): 函数返回值。
+        """
+
         record = self.state_store.get_record(iteration_id)
         if record is None:
             return None
@@ -437,5 +526,15 @@ class DemoReplayService:
         }
 
     def latest_iteration_for_batch(self, batch_id: str) -> Optional[Dict[str, Any]]:
+        """
+        latest iteration for batch。
+
+        Args:
+                batch_id (str): 参数 ``batch_id``。
+
+        Returns:
+                (Optional[Dict[str, Any]]): 函数返回值。
+        """
+
         record = self.state_store.get_latest_for_batch(batch_id)
         return record.to_dict() if record else None

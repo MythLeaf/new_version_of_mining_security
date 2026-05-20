@@ -19,8 +19,20 @@ logger = get_logger(__name__)
 class MarkdownTablePrettifier:
     """Markdown Table Prettifier：将 CSV/TXT 转换为标?Markdown 表格"""
 
+
     @staticmethod
     def csv_to_markdown(csv_content: str, delimiter: str = ",") -> str:
+        """
+        csv to markdown。
+
+        Args:
+                csv_content (str): 参数 ``csv_content``。
+                delimiter (str): 参数 ``delimiter``。
+
+        Returns:
+                (str): 函数返回值。
+        """
+
         reader = csv.reader(StringIO(csv_content), delimiter=delimiter)
         rows = list(reader)
         if not rows:
@@ -41,6 +53,7 @@ class KnowledgeBaseManager:
     核心功能?    1. 自动生成 6 个核?Markdown 知识库文?    2. Markdown Table Prettifier
     3. 版本控制（Git?    4. 增删改查与版本回?    """
 
+
     KNOWLEDGE_FILES = [
         "工矿风险预警智能体合规执行书.md",
         "部门分级审核SOP.md",
@@ -51,6 +64,7 @@ class KnowledgeBaseManager:
     ]
 
     def __init__(self, agentfs: Optional[AgentFS] = None):
+        """初始化 KnowledgeBaseManager；参数含义见类型注解与类文档。"""
         config = get_config()
         self.agentfs = agentfs or AgentFS()
         self.kb_dir = "knowledge_base"
@@ -58,6 +72,7 @@ class KnowledgeBaseManager:
 
     def _ensure_knowledge_files(self) -> None:
         """确保知识库文件存在，不存在则生成默认内容"""
+
         for filename in self.KNOWLEDGE_FILES:
             path = f"{self.kb_dir}/{filename}"
             if not self.agentfs.exists(path):
@@ -67,6 +82,7 @@ class KnowledgeBaseManager:
 
     def _generate_default_content(self, filename: str) -> str:
         """生成默认知识库内容"""
+
         generators = {
             "工矿风险预警智能体合规执行书.md": self._gen_compliance,
             "部门分级审核SOP.md": self._gen_sop,
@@ -79,6 +95,7 @@ class KnowledgeBaseManager:
         return gen()
 
     def _gen_compliance(self) -> str:
+        """内部辅助方法 ``_gen_compliance``；参数与返回值见类型注解。"""
         return """# 工矿风险预警智能体合规执行书
 
 ## 一、核心法规依?
@@ -98,7 +115,9 @@ class KnowledgeBaseManager:
 
 1. **严禁**在未取得安全生产许可证的情况下组织生产?2. **严禁**擅自关闭、破坏安全监控、报警、防护、救生设备设施?3. **严禁**超能力、超强度、超定员组织生产?4. **严禁**隐瞒不报、谎报或拖延不报生产安全事故?5. **严禁**使用国家明令淘汰或禁止使用的设备、工艺?"""
 
+
     def _gen_sop(self) -> str:
+        """内部辅助方法 ``_gen_sop``；参数与返回值见类型注解。"""
         return """# 部门分级审核 SOP
 
 ## 一、风险等级与审核部门对应?
@@ -119,7 +138,9 @@ class KnowledgeBaseManager:
 | 待填?| 待填?| 待填?| 待填?| 待填?|
 """
 
+
     def _gen_physics(self) -> str:
+        """内部辅助方法 ``_gen_physics``；参数与返回值见类型注解。"""
         return """# 工业物理常识及传感器时间序列逻辑
 
 ## 一、常见传感器参数范围
@@ -152,7 +173,9 @@ class KnowledgeBaseManager:
 - **振动 ?+ 噪声 ??机械故障前兆**
 """
 
+
     def _gen_conditions(self) -> str:
+        """内部辅助方法 ``_gen_conditions``；参数与返回值见类型注解。"""
         return """# 企业已具备的执行条件
 
 ## 一、通用应急设备清?
@@ -172,7 +195,9 @@ class KnowledgeBaseManager:
 
 1. 企业应在 5 分钟内启动应急响应程序?2. 微型消防站人员应?3 分钟内到达事发现场?3. 应急物资应?10 分钟内调取到位?4. 每年至少组织 2 次综合应急演练?"""
 
+
     def _gen_cases(self) -> str:
+        """内部辅助方法 ``_gen_cases``；参数与返回值见类型注解。"""
         return """# 类似事故处理案例
 
 ## 案例 1：某煤矿瓦斯超限事故?023?- **事故原因**：通风系统局部短路，导致掘进工作面瓦斯积聚达?2.3%?- **处置流程**?  1. 传感器报警后 30 秒内切断电源并撤人?  2. 通风?10 分钟内调整风路，恢复正压通风
@@ -184,7 +209,9 @@ class KnowledgeBaseManager:
 ## 案例 4-10：待补充...
 （可根据实际事故报告持续扩充?"""
 
+
     def _gen_history(self) -> str:
+        """内部辅助方法 ``_gen_history``；参数与返回值见类型注解。"""
         return """# 预警历史经验与短期记忆摘要
 > 本文件由系统在运行时自动写入，记录每次预警事件的处置经验与复盘总结?
 ## 记录格式模板
@@ -197,8 +224,10 @@ class KnowledgeBaseManager:
 （暂无记录）
 """
 
+
     def read(self, filename: str) -> str:
         """读取知识库文件"""
+
         path = f"{self.kb_dir}/{filename}"
         try:
             return self.agentfs.read(path).decode("utf-8")
@@ -207,24 +236,29 @@ class KnowledgeBaseManager:
 
     def write(self, filename: str, content: str, agent_id: Optional[str] = None) -> None:
         """写入知识库文件"""
+
         path = f"{self.kb_dir}/{filename}"
         self.agentfs.write(path, content.encode("utf-8"), agent_id=agent_id)
         logger.info(f"知识库已更新: {path}")
 
     def append(self, filename: str, content: str, agent_id: Optional[str] = None) -> None:
         """追加内容到知识库文件"""
+
         existing = self.read(filename)
         new_content = existing + "\n\n" + content
         self.write(filename, new_content, agent_id=agent_id)
 
     def list_files(self) -> List[str]:
         """列出所有知识库文件"""
+
         return self.KNOWLEDGE_FILES
 
     def snapshot(self, commit_message: str, agent_id: Optional[str] = None) -> str:
         """生成知识库快照"""
+
         return self.agentfs.snapshot(commit_message, agent_id=agent_id)
 
     def rollback(self, commit_id: str) -> None:
         """回滚知识库到指定版本"""
+
         self.agentfs.rollback(commit_id)

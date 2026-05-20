@@ -38,6 +38,10 @@ logger = get_logger(__name__)
 # =============================================================================
 
 class AgentState(TypedDict):
+    """
+
+    AgentState 类。
+    """
     enterprise_id: str
     raw_data: Dict[str, Any]
     features: Optional[Any]
@@ -63,6 +67,7 @@ class ScenarioConfig:
 
     优先从 config.yaml 的 scenarios 节读取配置，若不存在则使用硬编码默认值。
     """
+
 
     DEFAULT_SCENARIOS = {
         "chemical": {
@@ -97,6 +102,7 @@ class ScenarioConfig:
     @classmethod
     def _load_scenarios(cls) -> Dict[str, Dict[str, Any]]:
         """从 config.yaml 加载 scenarios 配置，若不存在则返回默认值"""
+
         try:
             config = get_config()
             scenarios: Dict[str, Any] = {}
@@ -116,11 +122,19 @@ class ScenarioConfig:
         return cls.DEFAULT_SCENARIOS
 
     def __init__(self, scenario_id: str = "chemical"):
+        """初始化 ScenarioConfig；参数含义见类型注解与类文档。"""
         self._scenarios = self._load_scenarios()
         self.scenario_id = scenario_id
         self.cfg = self._scenarios.get(scenario_id, self._scenarios["chemical"])
 
     def set_scenario(self, scenario_id: str) -> None:
+        """
+        set scenario。
+
+        Args:
+                scenario_id (Optional[str]): 场景 ID：chemical / metallurgy / dust
+        """
+
         if scenario_id not in self._scenarios:
             raise ValueError(f"未知场景: {scenario_id}, 可选: {list(self._scenarios.keys())}")
         self.scenario_id = scenario_id
@@ -129,26 +143,68 @@ class ScenarioConfig:
 
     @property
     def prompt_template_path(self) -> str:
+        """
+        prompt template path。
+
+        Returns:
+                (str): 函数返回值。
+        """
+
         return str(_get_project_base() / self.cfg["prompt_template"])
 
     @property
     def knowledge_base_subdir(self) -> str:
+        """
+        knowledge base subdir。
+
+        Returns:
+                (str): 函数返回值。
+        """
+
         return str(_get_project_base() / self.cfg["kb_subdir"])
 
     @property
     def checker_strictness(self) -> str:
+        """
+        checker strictness。
+
+        Returns:
+                (str): 函数返回值。
+        """
+
         return self.cfg["checker_strictness"]
 
     @property
     def confidence_threshold(self) -> float:
+        """
+        confidence threshold。
+
+        Returns:
+                (float): 函数返回值。
+        """
+
         return self.cfg["confidence_threshold"]
 
     @property
     def risk_threshold(self) -> float:
+        """
+        risk threshold。
+
+        Returns:
+                (float): 函数返回值。
+        """
+
         return self.cfg["risk_threshold"]
 
     @property
     def memory_top_k(self) -> int:
+        """
+        memory top k。
+
+        Returns:
+                (int): 函数返回值。
+        """
+
         return self.cfg["memory_top_k"]
 
 
@@ -158,6 +214,7 @@ class ScenarioConfig:
 
 def _push_node_status(state: AgentState, node: str, status: str, detail: str = "") -> None:
     """记录节点状态，供 SSE 流式输出使用"""
+
     state["node_status"].append({
         "node": node,
         "status": status,
@@ -168,6 +225,7 @@ def _push_node_status(state: AgentState, node: str, status: str, detail: str = "
 
 def _dump_validation_evidence(value: Any) -> List[Dict[str, Any]]:
     """兼容 Pydantic Evidence、dict 和测试里的 MagicMock。"""
+
     if not isinstance(value, list):
         return []
     output = []
@@ -181,6 +239,7 @@ def _dump_validation_evidence(value: Any) -> List[Dict[str, Any]]:
 
 def _get_project_base() -> Path:
     """仓库根目录（与 config.yaml、prompts/、knowledge_base/ 同级）。"""
+
     return PROJECT_ROOT
 
 
@@ -191,6 +250,7 @@ _memory: Optional[HybridMemoryManager] = None
 
 def _load_model() -> StackingRiskModel:
     """加载堆叠模型单例；加载失败时重置单例并抛出，避免缓存未训练实例导致后续请求误降级。"""
+
     global _model
     if _model is None:
         config = get_config()
@@ -211,6 +271,7 @@ def _load_model() -> StackingRiskModel:
 
 def _load_pipeline() -> FeatureEngineeringPipeline:
     """加载特征工程流水线单例；加载失败时抛出明确异常。"""
+
     global _pipeline
     if _pipeline is None:
         config = get_config()
@@ -228,6 +289,12 @@ def _load_pipeline() -> FeatureEngineeringPipeline:
 
 
 def _get_memory() -> HybridMemoryManager:
+    """懒加载全局混合记忆管理器单例。
+
+    Returns:
+        HybridMemoryManager: 进程内共享的记忆管理实例。
+    """
+
     global _memory
     if _memory is None:
         _memory = HybridMemoryManager()
@@ -236,6 +303,7 @@ def _get_memory() -> HybridMemoryManager:
 
 def _load_physics_context(scenario: ScenarioConfig) -> str:
     """加载物理常识上下文，优先从场景化知识库子集读取"""
+
     kb_dir = scenario.knowledge_base_subdir
     physics_file = os.path.join(kb_dir, "工业物理常识及传感器时间序列逻辑.md")
 
@@ -256,6 +324,7 @@ def _load_physics_context(scenario: ScenarioConfig) -> str:
 
 async def node_data_ingestion(state: AgentState) -> AgentState:
     """数据接入节点：构造 DataFrame，特征工程"""
+
     _push_node_status(state, "data_ingestion", "started")
     try:
         pipeline = _load_pipeline()
@@ -283,6 +352,7 @@ async def node_data_ingestion(state: AgentState) -> AgentState:
 
 async def node_risk_assessment(state: AgentState) -> AgentState:
     """风险评估节点：Stacking 模型预测"""
+
     _push_node_status(state, "risk_assessment", "started")
     try:
         if state.get("error") or state.get("features") is None:
@@ -308,6 +378,7 @@ async def node_risk_assessment(state: AgentState) -> AgentState:
 
 async def node_memory_recall(state: AgentState) -> AgentState:
     """记忆召回节点：基于 Top3 特征生成 query，调用 memory.recall()（含 SelfQuery 过滤）"""
+
     _push_node_status(state, "memory_recall", "started")
     try:
         prediction = state.get("prediction")
@@ -355,6 +426,7 @@ async def node_decision_generation(state: AgentState, scenario: ScenarioConfig) 
     4. 蒙特卡洛采样
     5. 三维风险评估
     """
+
     _push_node_status(state, "decision_generation", "started")
     try:
         prediction = state.get("prediction")
@@ -523,6 +595,7 @@ async def node_decision_generation(state: AgentState, scenario: ScenarioConfig) 
 
 async def node_result_push(state: AgentState) -> AgentState:
     """结果推送节点：封装最终输出"""
+
     _push_node_status(state, "result_push", "started")
     try:
         decision = state.get("decision") or {}
@@ -570,17 +643,21 @@ class DecisionWorkflow:
         result = await wf.run_async(enterprise_id="E001", raw_data={...})
     """
 
+
     def __init__(self, scenario_id: str = "chemical"):
+        """初始化 DecisionWorkflow；参数含义见类型注解与类文档。"""
         self.scenario = ScenarioConfig(scenario_id)
         self.graph = self._build_graph()
 
     def set_scenario(self, scenario_id: str) -> None:
         """切换场景配置，重建工作流图"""
+
         self.scenario.set_scenario(scenario_id)
         self.graph = self._build_graph()
 
     def _build_graph(self) -> Any:
         """构建 LangGraph 状态图"""
+
         workflow = StateGraph(AgentState)
 
         # 由于 decision_generation 需要注入 scenario，使用闭包包装
@@ -638,6 +715,7 @@ class DecisionWorkflow:
         Returns:
             最终 AgentState
         """
+
         initial_state: AgentState = {
             "enterprise_id": enterprise_id,
             "raw_data": raw_data,
@@ -662,6 +740,7 @@ class DecisionWorkflow:
         raw_data: Dict[str, Any],
     ) -> AgentState:
         """同步运行完整决策工作流（包装 async 入口）"""
+
         try:
             loop = asyncio.get_event_loop()
             if loop.is_running():

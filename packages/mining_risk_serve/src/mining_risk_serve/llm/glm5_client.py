@@ -23,6 +23,7 @@ DEFAULT_API_KEY = ""
 
 class OpenAICompatibleClient:
     """
+
     OpenAI 兼容异步客户端
 
     特性：
@@ -41,6 +42,7 @@ class OpenAICompatibleClient:
         max_retries: int = 3,
         default_max_tokens: int = 8192,
     ):
+        """初始化 OpenAICompatibleClient；参数含义见类型注解与类文档。"""
         env_api_key = os.getenv(api_key_env) if api_key_env else None
         self.api_key = api_key or env_api_key or DEFAULT_API_KEY
         self.base_url = base_url or DEFAULT_BASE_URL
@@ -72,6 +74,7 @@ class OpenAICompatibleClient:
         Returns:
             生成的文本内容
         """
+
         messages: list[dict] = []
         if system_message:
             messages.append({"role": "system", "content": system_message})
@@ -125,6 +128,7 @@ class OpenAICompatibleClient:
         Returns:
             解析后的 JSON 字典
         """
+
         messages: list[dict] = []
         sys_msg = system_message or (
             "你是一个结构化输出助手。请严格按照用户要求的 JSON 格式返回，"

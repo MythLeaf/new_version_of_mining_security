@@ -15,12 +15,14 @@ class PredictRequest(BaseModel):
       data: 企业特征字段键值对。
   """
 
+
   enterprise_id: str = Field(..., min_length=1, description="企业 ID")
   data: Dict[str, Any] = Field(default_factory=dict, description="企业特征数据")
 
 
 class PredictResponse(BaseModel):
   """传统风险预测响应。"""
+
 
   enterprise_id: str
   predicted_level: str
@@ -32,6 +34,7 @@ class PredictResponse(BaseModel):
 
 class QueryRequest(BaseModel):
   """预警历史查询条件。"""
+
 
   enterprise_id: Optional[str] = None
   start_time: Optional[str] = None
@@ -48,6 +51,7 @@ class DecisionRequest(BaseModel):
       scenario_id: 场景 ID，可选；缺省时从 ``data.scenario_id`` 或默认场景推断。
   """
 
+
   enterprise_id: str = Field(..., min_length=1, description="企业 ID")
   data: Dict[str, Any] = Field(default_factory=dict, description="企业原始数据")
   scenario_id: Optional[str] = Field(default=None, description="场景: chemical/metallurgy/dust")
@@ -55,6 +59,7 @@ class DecisionRequest(BaseModel):
 
 class DecisionResponse(BaseModel):
   """决策智能体完整响应。"""
+
 
   enterprise_id: str
   scenario_id: str
@@ -75,6 +80,7 @@ class DecisionResponse(BaseModel):
 class DecisionStreamMessage(BaseModel):
   """SSE 流式决策节点状态消息。"""
 
+
   node: str
   status: str
   timestamp: Optional[float] = None
@@ -89,6 +95,7 @@ class DecisionStreamMessage(BaseModel):
 class ScenarioSwitchResponse(BaseModel):
   """场景切换响应。"""
 
+
   scenario_id: str
   scenario_name: str
   message: str
@@ -100,6 +107,7 @@ class ScenarioSwitchResponse(BaseModel):
 
 class LLMConfigResponse(BaseModel):
   """LLM 运行时配置响应。"""
+
 
   provider: str
   model: str
@@ -114,6 +122,7 @@ class LLMConfigResponse(BaseModel):
 
 class LLMUpdateRequest(BaseModel):
   """LLM 配置更新请求。"""
+
 
   provider: str = Field(..., min_length=1, description="提供方标识")
   model: Optional[str] = None

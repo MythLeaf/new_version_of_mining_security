@@ -19,10 +19,12 @@ logger = get_logger(__name__)
 
 class GitFlowManager:
     """
+
     Git Flow 分支管理
     """
 
     def __init__(self, repo_path: Optional[str] = None):
+        """初始化 GitFlowManager；参数含义见类型注解与类文档。"""
         config = get_config()
         self.repo_path = repo_path or config.harness.agentfs.git_repo_path
         self.main_branch = config.harness.model_iteration.git_flow.main_branch
@@ -30,6 +32,7 @@ class GitFlowManager:
 
     def _run_git(self, args: List[str]) -> str:
         """执行 Git 命令"""
+
         result = subprocess.run(
             ["git", "-C", self.repo_path] + args,
             capture_output=True,
@@ -41,6 +44,7 @@ class GitFlowManager:
 
     def create_feature_branch(self, branch_name: str, from_branch: Optional[str] = None) -> str:
         """从指定分支创建特性分支"""
+
         base = from_branch or self.dev_branch
         self._run_git(["checkout", base])
         self._run_git(["checkout", "-b", branch_name])
@@ -49,6 +53,7 @@ class GitFlowManager:
 
     def create_pull_request(self, title: str, body: str, head: str, base: Optional[str] = None) -> Dict[str, Any]:
         """创建 PR（简化模拟）"""
+
         base_branch = base or self.main_branch
         pr_info = {
             "title": title,
@@ -63,12 +68,14 @@ class GitFlowManager:
 
     def merge_pull_request(self, branch_name: str) -> None:
         """合并 PR 到主分支"""
+
         self._run_git(["checkout", self.main_branch])
         self._run_git(["merge", "--no-ff", branch_name, "-m", f"Merge {branch_name}"])
         logger.info(f"合并分支: {branch_name} -> {self.main_branch}")
 
     def protect_main_branch(self) -> None:
         """保护主分支（禁止直接推送）"""
+
         # 实际中通过 GitHub/GitLab API 设置分支保护规则
         logger.info("主分支已设置保护规则（需通过 PR 合并）")
 
@@ -78,7 +85,9 @@ class CIPipeline:
     CI 自动化预检流水线
     """
 
+
     def __init__(self):
+        """初始化 CIPipeline；参数含义见类型注解与类文档。"""
         config = get_config()
         self.pipeline_steps = config.harness.model_iteration.ci.pipeline
         self.min_f1 = config.harness.model_iteration.ci.regression.get("min_f1_score", 0.85)
@@ -91,6 +100,7 @@ class CIPipeline:
         Returns:
             {passed: bool, steps: List[dict], report: str}
         """
+
         results = []
         all_passed = True
         
@@ -118,6 +128,7 @@ class CIPipeline:
 
     def _code_lint(self) -> Dict[str, Any]:
         """代码规范检查"""
+
         try:
             # 简化：检查 Python 语法
             result = subprocess.run(
@@ -136,6 +147,7 @@ class CIPipeline:
 
     def _system_load_test(self) -> Dict[str, Any]:
         """系统加载验证"""
+
         try:
             # 简化：尝试导入核心模块
             from mining_risk_common.model.stacking import StackingRiskModel
@@ -145,6 +157,7 @@ class CIPipeline:
 
     def _model_regression_test(self, new_path: str, baseline_path: str, test_data_path: str) -> Dict[str, Any]:
         """新旧模型背靠背对比测试"""
+
         try:
             import joblib
             import pandas as pd
@@ -178,6 +191,7 @@ class CIPipeline:
 
     def _generate_report(self, results: List[Dict[str, Any]]) -> str:
         """生成 CI 报告"""
+
         lines = ["# CI 预检报告", ""]
         for r in results:
             status = "✅通过" if r["passed"] else "❌失败"
@@ -192,13 +206,16 @@ class JointApproval:
     政企联合终审机制
     """
 
+
     def __init__(self):
+        """初始化 JointApproval；参数含义见类型注解与类文档。"""
         config = get_config()
         self.levels = config.harness.model_iteration.approval.levels
         self.trial_hours = config.harness.model_iteration.approval.trial_period_hours
 
     def submit_for_approval(self, ci_report: str, model_version: str) -> Dict[str, Any]:
         """提交终审申请"""
+
         return {
             "status": "PENDING",
             "model_version": model_version,
@@ -210,6 +227,7 @@ class JointApproval:
 
     def approve(self, approval_record: Dict[str, Any], approver_role: str, approver_name: str) -> Dict[str, Any]:
         """记录审批意见"""
+
         approval_record["approvals"].append({
             "role": approver_role,
             "name": approver_name,
@@ -228,6 +246,7 @@ class JointApproval:
 
     def start_trial(self, model_version: str) -> Dict[str, Any]:
         """启动预生产试运行"""
+
         return {
             "model_version": model_version,
             "start_time": time.time(),
@@ -241,7 +260,9 @@ class ModelIterationManager:
     模型迭代管控管理器
     """
 
+
     def __init__(self):
+        """初始化 ModelIterationManager；参数含义见类型注解与类文档。"""
         self.git = GitFlowManager()
         self.ci = CIPipeline()
         self.approval = JointApproval()
@@ -249,6 +270,7 @@ class ModelIterationManager:
 
     def initiate_iteration(self, feature_branch: str, description: str) -> Dict[str, Any]:
         """发起模型迭代"""
+
         # 创建特性分支
         self.git.create_feature_branch(feature_branch)
         
@@ -263,16 +285,19 @@ class ModelIterationManager:
 
     def run_ci_pipeline(self, new_model_path: str, baseline_model_path: str, test_data_path: str) -> Dict[str, Any]:
         """执行 CI 预检"""
+
         return self.ci.run(new_model_path, baseline_model_path, test_data_path)
 
     def request_approval(self, ci_result: Dict[str, Any], model_version: str) -> Dict[str, Any]:
         """申请联合终审"""
+
         if not ci_result["passed"]:
             raise ModelIterationError("CI 未通过，无法提交终审")
         return self.approval.submit_for_approval(ci_result["report"], model_version)
 
     def finalize_iteration(self, feature_branch: str, approval_record: Dict[str, Any]) -> Dict[str, Any]:
         """完成迭代并合并"""
+
         if approval_record.get("status") != "APPROVED":
             raise ModelIterationError("终审未通过，禁止合并")
         

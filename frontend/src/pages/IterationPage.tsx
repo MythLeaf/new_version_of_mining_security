@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchIterationStatus, triggerIteration, fetchIterationTracking } from "../api/client";
 import type { IterationStatus, IterationRecord } from "../api/types";
 import ReactECharts from "echarts-for-react";
+import SubTabs from "../components/SubTabs";
 
 const STATUS_MAP: Record<IterationRecord["status"], { label: string; color: string; bg: string }> = {
   draft: { label: "草稿", color: "#64748b", bg: "rgba(100,116,139,0.12)" },
@@ -80,33 +81,45 @@ const FALLBACK_STATUS: IterationStatus = {
   ],
 };
 
+const ITERATION_SECTIONS = [
+  { id: "dashboard", label: "迭代仪表盘" },
+  { id: "tracking", label: "准确性追踪" },
+  { id: "lifecycle", label: "生命周期管理" },
+  { id: "approval", label: "审批工作流" },
+  { id: "compare", label: "版本对比" },
+  { id: "changelog", label: "变更日志" },
+] as const;
+
+type IterationSection = (typeof ITERATION_SECTIONS)[number]["id"];
+
 export default function IterationPage() {
-  const [activeSection, setActiveSection] = useState<"dashboard" | "tracking" | "lifecycle" | "approval" | "compare" | "changelog">("dashboard");
+  const [activeSection, setActiveSection] = useState<IterationSection>("dashboard");
 
   return (
     <div>
-      <div className="section-title">🔄 模型迭代全生命周期管理</div>
-      <div className="sub-tab-bar">
-        {[
-          { key: "dashboard" as const, label: "📊 迭代仪表盘" },
-          { key: "tracking" as const, label: "📈 准确性追踪" },
-          { key: "lifecycle" as const, label: "🔧 生命周期管理" },
-          { key: "approval" as const, label: "📋 审批工作流" },
-          { key: "compare" as const, label: "📑 版本对比" },
-          { key: "changelog" as const, label: "📝 变更日志" },
-        ].map((t) => (
-          <button key={t.key} type="button" className={`sub-tab ${activeSection === t.key ? "active" : ""}`} onClick={() => setActiveSection(t.key)}>
-            {t.label}
-          </button>
-        ))}
+      <div className="alert info demo-data-banner" role="note">
+        版本时间线与部分图表使用本地演示数据；连接后端后迭代状态与追踪数据将来自 API。
       </div>
+      <div className="section-title">模型迭代全生命周期管理</div>
+      <SubTabs
+        tabs={[...ITERATION_SECTIONS]}
+        active={activeSection}
+        onChange={(id) => setActiveSection(id as IterationSection)}
+        ariaLabel="模型迭代子模块"
+      />
       <div className="divider" />
-      {activeSection === "dashboard" && <DashboardSection />}
-      {activeSection === "tracking" && <AccuracyTrackingSection />}
-      {activeSection === "lifecycle" && <LifecycleSection />}
-      {activeSection === "approval" && <ApprovalWorkflowSection />}
-      {activeSection === "compare" && <CompareSection />}
-      {activeSection === "changelog" && <ChangelogSection />}
+      <div
+        role="tabpanel"
+        id={`subtab-panel-${activeSection}`}
+        aria-labelledby={`subtab-${activeSection}`}
+      >
+        {activeSection === "dashboard" && <DashboardSection />}
+        {activeSection === "tracking" && <AccuracyTrackingSection />}
+        {activeSection === "lifecycle" && <LifecycleSection />}
+        {activeSection === "approval" && <ApprovalWorkflowSection />}
+        {activeSection === "compare" && <CompareSection />}
+        {activeSection === "changelog" && <ChangelogSection />}
+      </div>
     </div>
   );
 }

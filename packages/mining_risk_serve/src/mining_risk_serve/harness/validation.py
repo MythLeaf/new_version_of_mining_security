@@ -82,6 +82,7 @@ RAG_ENV_SWITCHES = (
 class Evidence(BaseModel):
     """单条校验证据，来自正式 RAG、Markdown 扫描或内置兜底规则。"""
 
+
     source_file: str = Field(default="", description="证据来源文件")
     section_title: str = Field(default="", description="证据所在章节")
     rule_id: str = Field(default="", description="COM/PHY 等规则 ID")
@@ -100,6 +101,7 @@ class ValidationResult(BaseModel):
     MARCH 校验结果 Pydantic 模型
     字段命名兼容：pass_ 在 Python 侧，序列化/构造时可用 pass
     """
+
     model_config = ConfigDict(populate_by_name=True)
 
     pass_: bool = Field(
@@ -134,6 +136,7 @@ def _get_isolated_propositions(state: Dict[str, Any]) -> List[Dict[str, str]]:
     信息隔离：仅提取 state["atomic_propositions"]
     明确禁止访问 state["raw_data"] 与 state["decision"]
     """
+
     if "atomic_propositions" not in state:
         raise ValidationError(
             "state 中缺少 atomic_propositions，无法执行 MARCH 校验"
@@ -146,6 +149,7 @@ def _get_isolated_propositions(state: Dict[str, Any]) -> List[Dict[str, str]]:
 # =============================================================================
 
 def _env_bool(names: Iterable[str]) -> Optional[bool]:
+    """内部辅助方法 ``_env_bool``；参数与返回值见类型注解。"""
     for name in names:
         value = os.getenv(name)
         if value is None:
@@ -155,6 +159,7 @@ def _env_bool(names: Iterable[str]) -> Optional[bool]:
 
 
 def _compact_text(text: str, limit: int = 260) -> str:
+    """内部辅助方法 ``_compact_text``；参数与返回值见类型注解。"""
     compact = re.sub(r"\s+", " ", text or "").strip()
     if len(compact) <= limit:
         return compact
@@ -162,6 +167,7 @@ def _compact_text(text: str, limit: int = 260) -> str:
 
 
 def _extract_first(patterns: Sequence[str], text: str) -> str:
+    """内部辅助方法 ``_extract_first``；参数与返回值见类型注解。"""
     for pattern in patterns:
         match = re.search(pattern, text or "")
         if match:
@@ -170,6 +176,7 @@ def _extract_first(patterns: Sequence[str], text: str) -> str:
 
 
 def _extract_rule_id(text: str) -> str:
+    """内部辅助方法 ``_extract_rule_id``；参数与返回值见类型注解。"""
     return _extract_first(
         [
             r"\b((?:COM|PHY)-[A-Z]+-\d{3})\b",
@@ -180,10 +187,12 @@ def _extract_rule_id(text: str) -> str:
 
 
 def _extract_sop_id(text: str) -> str:
+    """内部辅助方法 ``_extract_sop_id``；参数与返回值见类型注解。"""
     return _extract_first([r"\b(SOP-[A-Z]+-\d{3})\b"], text)
 
 
 def _extract_case_id(text: str) -> str:
+    """内部辅助方法 ``_extract_case_id``；参数与返回值见类型注解。"""
     return _extract_first(
         [
             r"case_id[：:]\s*`?([A-E]-\d{3})`?",
@@ -195,6 +204,7 @@ def _extract_case_id(text: str) -> str:
 
 
 def _identifier_field(identifier: str) -> Optional[str]:
+    """内部辅助方法 ``_identifier_field``；参数与返回值见类型注解。"""
     if identifier.startswith(("COM-", "PHY-")):
         return "rule_id"
     if identifier.startswith("SOP-"):
@@ -205,6 +215,7 @@ def _identifier_field(identifier: str) -> Optional[str]:
 
 
 def _infer_doc_type_from_path(path: Path) -> str:
+    """内部辅助方法 ``_infer_doc_type_from_path``；参数与返回值见类型注解。"""
     name = path.name
     for doc_type, filenames in DOC_TYPE_FILES.items():
         if name in filenames:
@@ -213,6 +224,7 @@ def _infer_doc_type_from_path(path: Path) -> str:
 
 
 def _lexical_score(query: str, text: str, preferred_ids: Sequence[str] = ()) -> float:
+    """内部辅助方法 ``_lexical_score``；参数与返回值见类型注解。"""
     query_norm = re.sub(r"\s+", "", (query or "").lower())
     text_norm = re.sub(r"\s+", "", (text or "").lower())
     if not query_norm or not text_norm:
@@ -248,12 +260,14 @@ class EvidenceRetriever:
     外部模型的 deterministic fallback embedding 环境下稳定运行。
     """
 
+
     def __init__(
         self,
         kb_dir: str = "knowledge_base",
         persist_directory: Optional[str] = None,
         collection_name: Optional[str] = None,
     ):
+        """初始化 EvidenceRetriever；参数含义见类型注解与类文档。"""
         self.kb_dir = self._resolve_path(kb_dir)
         config = get_config()
         rag_config = config.harness.memory.long_term.rag
@@ -266,12 +280,28 @@ class EvidenceRetriever:
 
     @staticmethod
     def _resolve_path(path_value: str) -> Path:
+        """
+                将配置相对路径解析为基于项目根的绝对路径。
+            
+                Args:
+                    path (str | Path): 路径。
+            
+                Returns:
+                    Path: 绝对路径。
+        """
         path = Path(path_value)
         if path.is_absolute():
             return path
         return resolve_project_path(path_value)
 
     def rag_enabled(self) -> bool:
+        """
+        rag enabled。
+
+        Returns:
+                (bool): 函数返回值。
+        """
+
         env_value = _env_bool(RAG_ENV_SWITCHES)
         if env_value is not None:
             return env_value
@@ -289,6 +319,21 @@ class EvidenceRetriever:
         top_k: int = 3,
         proposition_id: str = "",
     ) -> List[Evidence]:
+        """
+        retrieve。
+
+        Args:
+                query (str): 参数 ``query``。
+                layer (str): 参数 ``layer``。
+                doc_types (Sequence[str]): 参数 ``doc_types``。
+                preferred_ids (Optional[Sequence[str]]): 参数 ``preferred_ids``。
+                top_k (int): 参数 ``top_k``。
+                proposition_id (str): 参数 ``proposition_id``。
+
+        Returns:
+                (List[Evidence]): 函数返回值。
+        """
+
         preferred = tuple(i for i in (preferred_ids or []) if i)
         normalized_doc_types = tuple(doc_types)
         cache_key = (
@@ -335,6 +380,12 @@ class EvidenceRetriever:
         return deduped
 
     def _get_vector_store(self) -> Optional[Any]:
+        """懒加载向量库实例；持久化目录不存在时返回 None。
+
+        Returns:
+            Optional[VectorStore]: 已初始化的向量存储，或 None。
+        """
+
         if self._vector_store is not None:
             return self._vector_store
         if not (self.persist_directory / "chroma.sqlite3").exists():
@@ -361,6 +412,7 @@ class EvidenceRetriever:
         top_k: int,
         proposition_id: str,
     ) -> List[Evidence]:
+        """内部辅助方法 ``_retrieve_from_chroma``；参数与返回值见类型注解。"""
         store = self._get_vector_store()
         if store is None:
             return []
@@ -428,6 +480,7 @@ class EvidenceRetriever:
         top_k: int,
         proposition_id: str,
     ) -> List[Evidence]:
+        """内部辅助方法 ``_retrieve_from_markdown``；参数与返回值见类型注解。"""
         candidates: List[Tuple[float, Evidence]] = []
         for path, doc_type in self._iter_doc_paths(doc_types):
             try:
@@ -464,6 +517,7 @@ class EvidenceRetriever:
         return [item[1] for item in candidates[:top_k]]
 
     def _iter_doc_paths(self, doc_types: Sequence[str]) -> Iterable[Tuple[Path, str]]:
+        """内部辅助方法 ``_iter_doc_paths``；参数与返回值见类型注解。"""
         seen: set[Path] = set()
         for doc_type in doc_types:
             filenames = DOC_TYPE_FILES.get(doc_type, [])
@@ -477,12 +531,14 @@ class EvidenceRetriever:
                 yield path, _infer_doc_type_from_path(path)
 
     def _source_file(self, path: Path) -> str:
+        """内部辅助方法 ``_source_file``；参数与返回值见类型注解。"""
         try:
             return path.relative_to(resolve_project_path(".")).as_posix()
         except Exception:
             return path.as_posix()
 
     def _iter_fragments(self, text: str, default_title: str) -> Iterable[Tuple[str, str]]:
+        """内部辅助方法 ``_iter_fragments``；参数与返回值见类型注解。"""
         current_title = default_title
         paragraph: List[str] = []
 
@@ -518,6 +574,7 @@ class EvidenceRetriever:
         score: Optional[float],
         distance: Optional[float],
     ) -> Evidence:
+        """内部辅助方法 ``_evidence_from_payload``；参数与返回值见类型注解。"""
         rule_id = metadata.get("rule_id") or _extract_rule_id(text)
         sop_id = metadata.get("sop_id") or _extract_sop_id(text)
         case_id = metadata.get("case_id") or _extract_case_id(text)
@@ -541,6 +598,7 @@ class EvidenceRetriever:
         )
 
     def _dedupe(self, evidence: Sequence[Evidence]) -> List[Evidence]:
+        """内部辅助方法 ``_dedupe``；参数与返回值见类型注解。"""
         deduped: List[Evidence] = []
         seen: set[Tuple[str, str, str, str, str]] = set()
         for item in evidence:
@@ -562,6 +620,13 @@ _EVIDENCE_RETRIEVER: Optional[EvidenceRetriever] = None
 
 
 def get_validation_evidence_retriever() -> EvidenceRetriever:
+    """
+    get validation evidence retriever。
+
+        Returns:
+            (EvidenceRetriever): 函数返回值。
+    """
+
     global _EVIDENCE_RETRIEVER
     if _EVIDENCE_RETRIEVER is None:
         _EVIDENCE_RETRIEVER = EvidenceRetriever()
@@ -575,6 +640,18 @@ def _builtin_evidence(
     matched_text: str,
     proposition_id: str,
 ) -> Evidence:
+    """构造内置兜底规则对应的 Evidence 对象。
+
+    Args:
+        layer (str): 证据层级（如 rule/sop/case）。
+        identifier (str): 规则或案例标识符。
+        matched_text (str): 匹配到的文本片段。
+        proposition_id (str): 命题 ID。
+
+    Returns:
+        Evidence: 填充了来源与匹配信息的证据记录。
+    """
+
     field = _identifier_field(identifier)
     return Evidence(
         source_file="builtin_fallback_rules",
@@ -599,6 +676,18 @@ def _ensure_evidence(
     matched_text: str,
     proposition_id: str,
 ) -> List[Evidence]:
+    """若检索结果为空则注入内置兜底证据，否则原样返回。
+
+    Args:
+        evidence (List[Evidence]): RAG 检索得到的证据列表。
+        layer (str): 证据层级。
+        identifier (str): 规则/案例标识。
+        matched_text (str): 匹配文本。
+        proposition_id (str): 原子命题 ID。
+
+    Returns:
+        List[Evidence]: 非空证据列表（至少含一条兜底记录）。
+    """
     if evidence:
         return evidence
     return [
@@ -612,6 +701,7 @@ def _ensure_evidence(
 
 
 def _format_evidence_source(evidence: Sequence[Evidence]) -> str:
+    """内部辅助方法 ``_format_evidence_source``；参数与返回值见类型注解。"""
     if not evidence:
         return "无外部证据，已使用内置兜底规则"
     item = evidence[0]
@@ -621,10 +711,12 @@ def _format_evidence_source(evidence: Sequence[Evidence]) -> str:
 
 
 def _serialize_evidence(evidence: Sequence[Evidence]) -> List[Dict[str, Any]]:
+    """内部辅助方法 ``_serialize_evidence``；参数与返回值见类型注解。"""
     return [item.model_dump() if hasattr(item, "model_dump") else dict(item) for item in evidence]
 
 
 def _compliance_violation(text: str) -> Optional[Dict[str, str]]:
+    """内部辅助方法 ``_compliance_violation``；参数与返回值见类型注解。"""
     for rule in COMPLIANCE_RULE_REFERENCES:
         if rule["keyword"] in text:
             return {
@@ -663,6 +755,7 @@ def _compliance_violation(text: str) -> Optional[Dict[str, str]]:
 
 
 def _logic_violation(text: str) -> Optional[Dict[str, str]]:
+    """内部辅助方法 ``_logic_violation``；参数与返回值见类型注解。"""
     if "温度" in text and ("超过 100°C 正常" in text or "100度正常" in text):
         return {
             "rule_id": LOGIC_RULE_REFERENCES["temperature_impossible_normal"],
@@ -694,6 +787,7 @@ def _logic_violation(text: str) -> Optional[Dict[str, str]]:
 
 
 def _feasibility_violation(text: str) -> Optional[Dict[str, str]]:
+    """内部辅助方法 ``_feasibility_violation``；参数与返回值见类型注解。"""
     is_micro = "微型" in text or "小微" in text
     if "立即停产" in text and is_micro:
         return {
@@ -738,6 +832,7 @@ def compliance_checker(state: Dict[str, Any]) -> Dict[str, Any]:
     LangGraph 合规红线 Checker 节点
     信息隔离：仅允许读取 state["atomic_propositions"]
     """
+
     propositions = _get_isolated_propositions(state)
     retriever = get_validation_evidence_retriever()
     violated: List[Dict[str, Any]] = []
@@ -809,6 +904,7 @@ def logic_checker(state: Dict[str, Any]) -> Dict[str, Any]:
     LangGraph 工况逻辑 Checker 节点
     信息隔离：仅允许读取 state["atomic_propositions"]
     """
+
     propositions = _get_isolated_propositions(state)
     retriever = get_validation_evidence_retriever()
     violated: List[Dict[str, Any]] = []
@@ -880,6 +976,7 @@ def feasibility_checker(state: Dict[str, Any]) -> Dict[str, Any]:
     LangGraph 处置可行性 Checker 节点
     信息隔离：仅允许读取 state["atomic_propositions"]
     """
+
     propositions = _get_isolated_propositions(state)
     retriever = get_validation_evidence_retriever()
     violated: List[Dict[str, Any]] = []
@@ -956,6 +1053,7 @@ def run_march_validation(state: Dict[str, Any]) -> Dict[str, Any]:
     合规红线 → 工况逻辑 → 处置可行性
     任意一级不通过即暂停并返回结构化修正反馈
     """
+
     supporting_evidence: List[Evidence] = []
 
     # Level 1: 合规红线
@@ -1003,7 +1101,9 @@ class ToolCallInterceptor:
     工具调用拦截器：对所有工具调用注入风险评估
     """
 
+
     def __init__(self, risk_assessor: Optional[RiskAssessor] = None):
+        """初始化 ToolCallInterceptor；参数含义见类型注解与类文档。"""
         self.risk_assessor = risk_assessor or RiskAssessor()
         self.intercepted_calls: List[Dict[str, Any]] = []
 
@@ -1013,6 +1113,7 @@ class ToolCallInterceptor:
         """
         拦截工具调用：先评估风险，通过后再执行原函数
         """
+
         risk = self.risk_assessor.assess_tool_call(tool_name, args, kwargs)
         self.intercepted_calls.append({
             "tool_name": tool_name,
@@ -1035,6 +1136,7 @@ class ToolCallInterceptor:
 
     def wrap(self, tool_name: str, tool_func: Callable) -> Callable:
         """返回一个被拦截器包装的工具函数"""
+
         def wrapper(*args: Any, **kwargs: Any) -> Any:
             return self.intercept(tool_name, tool_func, *args, **kwargs)
         return wrapper
@@ -1050,10 +1152,22 @@ class Checker:
     test_harness.py 仍可直接 from harness.validation import Checker
     """
 
+
     def __init__(self, knowledge_base: Optional[KnowledgeBaseManager] = None):
+        """初始化 Checker；参数含义见类型注解与类文档。"""
         self.kb = knowledge_base or KnowledgeBaseManager()
 
     def check(self, propositions: List[Dict[str, str]]) -> Dict[str, Any]:
+        """
+        check。
+
+        Args:
+                propositions (List[Dict[str, str]]): 原子命题列表
+
+        Returns:
+                (Dict[str, Any]): 函数返回值。
+        """
+
         state = {"atomic_propositions": propositions}
         result = run_march_validation(state)
         vr = result["validation_result"]
@@ -1074,7 +1188,9 @@ class ValidationPipeline:
     test_harness.py 仍可直接 from harness.validation import ValidationPipeline
     """
 
+
     def __init__(self):
+        """初始化 ValidationPipeline；参数含义见类型注解与类文档。"""
         self.kb = KnowledgeBaseManager()
         self.checker = Checker(self.kb)
         self.mc_validator = MonteCarloValidator()
@@ -1082,6 +1198,16 @@ class ValidationPipeline:
 
     def run(self, decision: Dict[str, Any]) -> Dict[str, Any]:
         # Step 1: MARCH 声明级孤立验证
+        """
+        run。
+
+        Args:
+                decision (Dict[str, Any]): LLM 或规则引擎输出的决策字典
+
+        Returns:
+                (Dict[str, Any]): 函数返回值。
+        """
+
         propositions = Proposer.decompose(decision)
         march_result = self.checker.check(propositions)
 
@@ -1142,6 +1268,7 @@ class ValidationPipeline:
 
     def _route_by_risk(self, decision: Dict[str, Any]) -> str:
         """根据风险等级路由到对应审核部门"""
+
         level = decision.get("predicted_level", "四级")
         routing_map = {
             "一级": "属地应急管理局 + 省级监管部门",

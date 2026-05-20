@@ -48,6 +48,7 @@ DEFAULT_FALLBACK_EMBEDDING_DIMENSIONS = 384
 
 
 def _env_bool(names: Iterable[str], default: bool) -> bool:
+    """内部辅助方法 ``_env_bool``；参数与返回值见类型注解。"""
     for name in names:
         value = os.getenv(name)
         if value is None:
@@ -57,11 +58,13 @@ def _env_bool(names: Iterable[str], default: bool) -> bool:
 
 
 def _stable_hash(value: str) -> int:
+    """内部辅助方法 ``_stable_hash``；参数与返回值见类型注解。"""
     digest = hashlib.blake2b(value.encode("utf-8"), digest_size=8).digest()
     return int.from_bytes(digest, byteorder="big", signed=False)
 
 
 def _fallback_features(text: str) -> Iterable[tuple[str, float]]:
+    """内部辅助方法 ``_fallback_features``；参数与返回值见类型注解。"""
     normalized = re.sub(r"\s+", "", text.lower())
     if not normalized:
         return
@@ -97,6 +100,7 @@ def deterministic_embedding(
     dimensions: int = DEFAULT_FALLBACK_EMBEDDING_DIMENSIONS,
 ) -> List[List[float]]:
     """Return deterministic, normalized embeddings for offline indexing/tests."""
+
     embeddings: List[List[float]] = []
     for text in texts:
         vec = [0.0] * dimensions
@@ -122,6 +126,7 @@ def split_by_headers(text: str, max_chunk_size: int = 300, overlap: int = 50) ->
     Returns:
         chunk 列表，每个元素包含 text 和 metadata
     """
+
     lines = text.splitlines()
     chunks = []
     current_section = {"title": "", "level": 0, "lines": []}
@@ -260,6 +265,7 @@ class VectorStore:
     支持 SelfQuery 元数据预过滤 + 向量相似度检索
     """
 
+
     def __init__(
         self,
         collection_name: Optional[str] = None,
@@ -268,6 +274,7 @@ class VectorStore:
         embedding_fn: Optional[callable] = None,
         embedding_backend: Optional[str] = None,
     ):
+        """初始化 VectorStore；参数含义见类型注解与类文档。"""
         config = get_config()
         rag_config = config.harness.memory.long_term.rag
         self.collection_name = collection_name or rag_config.get("collection_name", "knowledge_base")
@@ -335,6 +342,7 @@ class VectorStore:
         self._embedding_model: Optional[Any] = None
 
     def _get_embedding_model(self) -> Any:
+        """内部辅助方法 ``_get_embedding_model``；参数与返回值见类型注解。"""
         if SentenceTransformer is None:
             detail = (
                 f" 原始错误: {_SENTENCE_TRANSFORMERS_IMPORT_ERROR}"
@@ -353,6 +361,7 @@ class VectorStore:
 
     def embed(self, texts: List[str]) -> List[List[float]]:
         """文本向量化"""
+
         if self._embedding_fn is not None:
             return self._embedding_fn(texts)
         if self.embedding_backend in {"fallback", "mock", "deterministic"}:
@@ -385,6 +394,7 @@ class VectorStore:
             metadatas: 元数据列表
             ids: 文档ID列表
         """
+
         if not documents:
             return
         
@@ -409,6 +419,7 @@ class VectorStore:
         Returns:
             加载的 chunk 数量
         """
+
         if not os.path.exists(kb_dir):
             logger.warning(f"知识库目录不存在: {kb_dir}")
             return 0
@@ -516,6 +527,7 @@ class VectorStore:
         Returns:
             检索结果列表，每个元素包含 text, metadata, distance
         """
+
         if not query or not query.strip():
             return []
         
@@ -558,10 +570,12 @@ class VectorStore:
         """
         纯向量相似度检索（无元数据过滤）
         """
+
         return self.self_query_retrieve(query, filters=None, top_k=top_k)
 
     def clear(self) -> None:
         """清空集合"""
+
         ids = self.collection.get()["ids"]
         if ids:
             self.collection.delete(ids=ids)
@@ -569,6 +583,7 @@ class VectorStore:
 
     def reset_collection(self) -> None:
         """删除并重建集合，用于复跑索引时重置向量维度。"""
+
         try:
             self.client.delete_collection(name=self.collection_name)
         except Exception:

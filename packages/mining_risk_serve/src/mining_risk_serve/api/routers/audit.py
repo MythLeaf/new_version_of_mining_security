@@ -21,12 +21,14 @@ router = APIRouter()
 
 def _get_audit_db() -> str:
     """获取审计 SQLite 数据库路径。"""
+
     config = get_config()
     return config.audit.db_path
 
 
 def _init_audit_db() -> None:
     """初始化审计表结构（幂等）。"""
+
     db_path = _get_audit_db()
     os.makedirs(os.path.dirname(db_path) or ".", exist_ok=True)
     conn = sqlite3.connect(db_path)
@@ -56,6 +58,7 @@ async def log_audit(
     _: None = Depends(require_admin_token),
 ) -> Dict[str, str]:
     """写入审计日志。"""
+
     db_path = _get_audit_db()
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
@@ -86,6 +89,7 @@ async def query_audit(
     _: None = Depends(require_admin_token),
 ) -> List[AuditLogEntry]:
     """按条件分页查询审计日志。"""
+
     db_path = _get_audit_db()
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row

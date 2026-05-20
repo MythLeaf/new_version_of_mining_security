@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   fetchHealth,
   fetchIterationStatus,
@@ -19,18 +19,37 @@ import IterationPage from "./pages/IterationPage";
 import SystemConfigPage from "./pages/SystemConfigPage";
 
 const TAB_DEFS = [
-  { id: "risk", label: "🎯 企业风险预测" },
-  { id: "knowledge", label: "📚 知识库与记忆系统" },
-  { id: "iteration", label: "🔄 模型迭代与CI/CD" },
-  { id: "config", label: "⚙️ 系统配置与API文档" },
+  { id: "risk", label: "企业风险预测" },
+  { id: "knowledge", label: "预警经验与记忆" },
+  { id: "iteration", label: "模型迭代与 CI/CD" },
+  { id: "config", label: "系统配置与 API" },
 ];
+
+const TAB_IDS = TAB_DEFS.map((t) => t.id);
+const DEMO_ROTATE_MS = 12_000;
+
+function tabFromHash(): string {
+  const raw = window.location.hash.replace(/^#/, "").trim();
+  return TAB_IDS.includes(raw) ? raw : "risk";
+}
 
 export default function App() {
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [iteration, setIteration] = useState<IterationStatus | null>(null);
   const [scenario, setScenario] = useState<ScenarioId>("chemical");
   const [demoMode, setDemoMode] = useState(false);
-  const [activeTab, setActiveTab] = useState<string>("risk");
+  const [activeTab, setActiveTab] = useState<string>(() => tabFromHash());
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  const online = health?.status === "healthy";
+
+  const setTab = useCallback((id: string) => {
+    setActiveTab(id);
+    if (window.location.hash !== `#${id}`) {
+      window.location.hash = id;
+    }
+    setSidebarOpen(false);
+  }, []);
 
   useEffect(() => {
     fetchHealth().then(setHealth);
@@ -41,6 +60,31 @@ export default function App() {
     return () => clearInterval(id);
   }, []);
 
+  useEffect(() => {
+    const sync = () => setActiveTab(tabFromHash());
+    window.addEventListener("hashchange", sync);
+    return () => window.removeEventListener("hashchange", sync);
+  }, []);
+
+  useEffect(() => {
+    if (!window.location.hash) {
+      window.location.hash = activeTab;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!demoMode) return;
+    const timer = window.setInterval(() => {
+      setActiveTab((prev) => {
+        const idx = TAB_IDS.indexOf(prev);
+        const next = TAB_IDS[(idx + 1) % TAB_IDS.length];
+        window.location.hash = next;
+        return next;
+      });
+    }, DEMO_ROTATE_MS);
+    return () => window.clearInterval(timer);
+  }, [demoMode]);
+
   async function changeScenario(s: ScenarioId) {
     setScenario(s);
     await switchScenario(s);
@@ -48,7 +92,22 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <StatusBar health={health} scenarioName={SCENARIO_NAMES[scenario]} />
+      <StatusBar
+        health={health}
+        scenarioName={SCENARIO_NAMES[scenario]}
+        backendOnline={online}
+        demoMode={demoMode}
+        onMenuToggle={() => setSidebarOpen((o) => !o)}
+        menuExpanded={sidebarOpen}
+      />
+      {sidebarOpen && (
+        <button
+          type="button"
+          className="sidebar-backdrop"
+          aria-label="关闭侧边栏"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
       <div className="app-body">
         <Sidebar
           health={health}
@@ -57,19 +116,23 @@ export default function App() {
           iteration={iteration}
           demoMode={demoMode}
           onDemoToggle={setDemoMode}
+          open={sidebarOpen}
+          onClose={() => setSidebarOpen(false)}
         />
-        <main className="main-content">
-          <Tabs
-            tabs={TAB_DEFS}
-            active={activeTab}
-            onChange={setActiveTab}
-          />
-          {activeTab === "risk" && <RiskPredictionPage scenario={scenario} />}
-          {activeTab === "knowledge" && <KnowledgeMemoryPage />}
-          {activeTab === "iteration" && <IterationPage />}
-          {activeTab === "config" && (
-            <SystemConfigPage scenario={scenario} health={health} />
-          )}
+        <main className="main-content" id="main-content">
+          <Tabs tabs={TAB_DEFS} active={activeTab} onChange={setTab} />
+          <div
+            role="tabpanel"
+            id={`panel-${activeTab}`}
+            aria-labelledby={`tab-${activeTab}`}
+          >
+            {activeTab === "risk" && <RiskPredictionPage scenario={scenario} />}
+            {activeTab === "knowledge" && <KnowledgeMemoryPage />}
+            {activeTab === "iteration" && <IterationPage />}
+            {activeTab === "config" && (
+              <SystemConfigPage scenario={scenario} health={health} />
+            )}
+          </div>
         </main>
       </div>
     </div>

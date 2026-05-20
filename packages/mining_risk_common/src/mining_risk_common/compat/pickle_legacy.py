@@ -14,6 +14,15 @@ _REGISTERED = False
 
 
 def register_legacy_pickle_modules() -> None:
+    """在反序列化历史 pkl 前注册旧版模块路径别名。
+
+将 ``data.preprocessor``、``model.stacking``、``model._logistic``、
+``utils.config`` 等迁移前模块名映射到 ``mining_risk_common`` 对应模块，
+保证 sklearn Pipeline 与模型权重可正常 ``pickle.load``。
+
+Notes:
+    幂等：多次调用仅首次生效。"""
+
     global _REGISTERED
     if _REGISTERED:
         return

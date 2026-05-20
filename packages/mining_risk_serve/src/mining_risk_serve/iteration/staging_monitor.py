@@ -19,6 +19,10 @@ logger = get_logger(__name__)
 
 @dataclass
 class StagingSample:
+    """
+
+    StagingSample 类。
+    """
     timestamp: float
     latency_ms: float
     is_anomaly: bool
@@ -28,6 +32,7 @@ class StagingSample:
 
 class StagingMonitor:
     """
+
     预生产监控器
     - 每 5 分钟采样
     - 监控延迟、异常率、置信度分布、输入数据分布漂移
@@ -40,6 +45,7 @@ class StagingMonitor:
         sample_interval_minutes: int = 5,
         logs_dir: str = "logs",
     ):
+        """初始化 StagingMonitor；参数含义见类型注解与类文档。"""
         config = get_config()
         self.model_version = model_version
         self.duration_hours = duration_hours
@@ -52,6 +58,7 @@ class StagingMonitor:
 
     def start(self) -> None:
         """启动预生产监控"""
+
         self.start_time = time.time()
         self.end_time = self.start_time + self.duration_hours * 3600
         logger.info(f"预生产监控启动: {self.model_version}, 持续 {self.duration_hours} 小时")
@@ -66,6 +73,7 @@ class StagingMonitor:
         """
         记录一次采样（模拟每5分钟调用）
         """
+
         sample = {
             "timestamp": time.time(),
             "model_version": self.model_version,
@@ -88,6 +96,7 @@ class StagingMonitor:
 
     def _hash_input(self, features: Optional[Dict]) -> str:
         """简单哈希输入特征用于分布追踪"""
+
         if features is None:
             return ""
         import hashlib
@@ -98,6 +107,7 @@ class StagingMonitor:
         """
         检查输入数据分布漂移（简化：基于最近 window_size 个样本的置信度分布）
         """
+
         if len(self.samples) < window_size * 2:
             return {"drift_detected": False, "reason": "样本不足", "kl_divergence": 0.0}
 
@@ -125,6 +135,7 @@ class StagingMonitor:
         """
         生成 staging_report
         """
+
         if not self.samples:
             return {"status": "NO_DATA", "model_version": self.model_version}
 
@@ -177,6 +188,7 @@ class StagingMonitor:
         模拟运行（用于测试）
         生成 num_samples 个随机采样，然后生成报告
         """
+
         self.start()
         for i in range(num_samples):
             latency = np.random.normal(200, 50)

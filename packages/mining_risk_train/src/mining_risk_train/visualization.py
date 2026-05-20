@@ -45,12 +45,14 @@ except ImportError:
 
 
 def _ensure_dir(path: str) -> str:
+    """内部辅助方法 ``_ensure_dir``；参数与返回值见类型注解。"""
     os.makedirs(path, exist_ok=True)
     return path
 
 
 def _build_meta_feature_names(model) -> List[str]:
     """构建元学习器输入特征名"""
+
     feature_names = []
     for name in model.base_learners.keys():
         for lvl in model.risk_levels:
@@ -60,6 +62,7 @@ def _build_meta_feature_names(model) -> List[str]:
 
 def _prepare_shap_explanation(model, meta_features: np.ndarray):
     """准备适用于可视化的 SHAP Explanation 对象（处理 multiclass）"""
+
     explainer = shap.Explainer(model.meta_learner, meta_features)
     shap_values = explainer(meta_features)
     feature_names = _build_meta_feature_names(model)
@@ -88,6 +91,7 @@ def plot_shap_summary(
     output_dir: str = "reports/figures",
 ) -> str:
     """SHAP 全局蜂群图（基于元学习器）"""
+
     output_path = os.path.join(output_dir, "shap_summary_beeswarm.png")
     _ensure_dir(output_dir)
 
@@ -123,6 +127,7 @@ def plot_shap_force_single(
     sample_idx: int = 0,
 ) -> str:
     """单样本 SHAP 力导向图 (HTML)"""
+
     output_path = os.path.join(output_dir, f"shap_force_sample_{sample_idx}.html")
     _ensure_dir(output_dir)
 
@@ -167,6 +172,7 @@ def plot_confusion_matrix_heatmap(
     output_dir: str = "reports/figures",
 ) -> str:
     """混淆矩阵热力图"""
+
     output_path = os.path.join(output_dir, "confusion_matrix_heatmap.png")
     _ensure_dir(output_dir)
 
@@ -193,6 +199,7 @@ def plot_roc_pr_curves(
     output_dir: str = "reports/figures",
 ) -> List[str]:
     """ROC 与 PR 曲线 (4 类 OvR)"""
+
     labels = labels or ["蓝", "黄", "橙", "红"]
     n_classes = len(labels)
     y_true_bin = label_binarize(y_true, classes=list(range(n_classes)))
@@ -250,6 +257,7 @@ def plot_training_curves(
     output_dir: str = "reports/figures",
 ) -> str:
     """训练曲线（深度学习基学习器）"""
+
     output_path = os.path.join(output_dir, "training_curves.png")
     _ensure_dir(output_dir)
 
@@ -278,6 +286,7 @@ def plot_meta_learner_weights(
     output_dir: str = "reports/figures",
 ) -> str:
     """元学习器权重柱状图"""
+
     output_path = os.path.join(output_dir, "meta_learner_weights.png")
     _ensure_dir(output_dir)
 
@@ -340,6 +349,7 @@ def generate_all_reports(
     Returns:
         图表路径字典
     """
+
     _ensure_dir(output_dir)
     reports = {}
 

@@ -16,6 +16,7 @@ from sklearn.model_selection import TimeSeriesSplit
 
 def _create_logistic_regression(**params):
     """兼容新旧版本 sklearn 的 LogisticRegression 构造器"""
+
     try:
         return LogisticRegression(**params)
     except TypeError as e:
@@ -63,6 +64,7 @@ warnings.filterwarnings("ignore")
 
 def _to_numpy(X: Union[pd.DataFrame, np.ndarray]) -> np.ndarray:
     """统一将输入转为 numpy 数组"""
+
     if isinstance(X, pd.DataFrame):
         return X.values.astype(np.float32)
     return np.asarray(X, dtype=np.float32)
@@ -71,28 +73,53 @@ def _to_numpy(X: Union[pd.DataFrame, np.ndarray]) -> np.ndarray:
 class DeepLearningBaseLearner:
     """深度学习基学习器抽象基类"""
 
+
     def __init__(self, model_type: str, params: Dict[str, Any]):
+        """初始化 DeepLearningBaseLearner；参数含义见类型注解与类文档。"""
         self.model_type = model_type
         self.params = params
         self.model: Optional[Any] = None
         self._input_dim: Optional[int] = None
 
     def _build_model(self, input_dim: int) -> None:
+        """内部辅助方法 ``_build_model``；参数与返回值见类型注解。"""
         raise NotImplementedError
 
     def fit(self, X: Union[pd.DataFrame, np.ndarray], y: Union[pd.Series, np.ndarray],
             X_val: Optional[Union[pd.DataFrame, np.ndarray]] = None,
             y_val: Optional[Union[pd.Series, np.ndarray]] = None) -> None:
+        """
+                拟合转换器（本实现多为无状态，直接返回 self）。
+            
+                Args:
+                    X (pd.DataFrame): 输入特征矩阵。
+                    y (Any, optional): 监督标签，可忽略。
+            
+                Returns:
+                    self: 当前转换器实例。
+        """
         raise NotImplementedError
 
     def predict_proba(self, X: Union[pd.DataFrame, np.ndarray]) -> np.ndarray:
+        """
+        predict proba。
+
+        Args:
+                X (pd.DataFrame): 特征矩阵或待变换列
+
+        Returns:
+                (np.ndarray): 函数返回值。
+        """
+
         raise NotImplementedError
 
 
 class MLPBaseLearner(DeepLearningBaseLearner):
     """MLP 基学习器：Dense(128)→Dense(64)→Dense(4) + Dropout0.3 + ReLU"""
 
+
     def _build_model(self, input_dim: int) -> None:
+        """内部辅助方法 ``_build_model``；参数与返回值见类型注解。"""
         if tf is None:
             self.model = None
             return
@@ -114,6 +141,16 @@ class MLPBaseLearner(DeepLearningBaseLearner):
     def fit(self, X: Union[pd.DataFrame, np.ndarray], y: Union[pd.Series, np.ndarray],
             X_val: Optional[Union[pd.DataFrame, np.ndarray]] = None,
             y_val: Optional[Union[pd.Series, np.ndarray]] = None) -> None:
+        """
+                拟合转换器（本实现多为无状态，直接返回 self）。
+            
+                Args:
+                    X (pd.DataFrame): 输入特征矩阵。
+                    y (Any, optional): 监督标签，可忽略。
+            
+                Returns:
+                    self: 当前转换器实例。
+        """
         if tf is None:
             return
         X_arr = _to_numpy(X)
@@ -144,6 +181,16 @@ class MLPBaseLearner(DeepLearningBaseLearner):
         )
 
     def predict_proba(self, X: Union[pd.DataFrame, np.ndarray]) -> np.ndarray:
+        """
+        predict proba。
+
+        Args:
+                X (pd.DataFrame): 特征矩阵或待变换列
+
+        Returns:
+                (np.ndarray): 函数返回值。
+        """
+
         X_arr = _to_numpy(X)
         if self.model is None:
             return np.ones((X_arr.shape[0], 4)) / 4.0
@@ -153,7 +200,9 @@ class MLPBaseLearner(DeepLearningBaseLearner):
 class CNN1DBaseLearner(DeepLearningBaseLearner):
     """1D-CNN 基学习器：Conv1D64→MaxPool→Conv1D128→MaxPool→Flatten→Dense64, Dropout0.3"""
 
+
     def _build_model(self, input_dim: int) -> None:
+        """内部辅助方法 ``_build_model``；参数与返回值见类型注解。"""
         if tf is None:
             self.model = None
             return
@@ -181,6 +230,16 @@ class CNN1DBaseLearner(DeepLearningBaseLearner):
     def fit(self, X: Union[pd.DataFrame, np.ndarray], y: Union[pd.Series, np.ndarray],
             X_val: Optional[Union[pd.DataFrame, np.ndarray]] = None,
             y_val: Optional[Union[pd.Series, np.ndarray]] = None) -> None:
+        """
+                拟合转换器（本实现多为无状态，直接返回 self）。
+            
+                Args:
+                    X (pd.DataFrame): 输入特征矩阵。
+                    y (Any, optional): 监督标签，可忽略。
+            
+                Returns:
+                    self: 当前转换器实例。
+        """
         if tf is None:
             return
         X_arr = _to_numpy(X)
@@ -213,6 +272,16 @@ class CNN1DBaseLearner(DeepLearningBaseLearner):
         )
 
     def predict_proba(self, X: Union[pd.DataFrame, np.ndarray]) -> np.ndarray:
+        """
+        predict proba。
+
+        Args:
+                X (pd.DataFrame): 特征矩阵或待变换列
+
+        Returns:
+                (np.ndarray): 函数返回值。
+        """
+
         X_arr = _to_numpy(X)
         if self.model is None:
             return np.ones((X_arr.shape[0], 4)) / 4.0
@@ -228,7 +297,9 @@ class StackingRiskModel:
     第二层：带 L1+L2 正则化的弹性网络逻辑回归
     """
 
+
     def __init__(self):
+        """初始化 StackingRiskModel；参数含义见类型注解与类文档。"""
         config = get_config()
         self.config = config.model.stacking
         self.risk_levels = config.model.risk_levels
@@ -244,6 +315,7 @@ class StackingRiskModel:
 
     def _build_base_learners(self) -> None:
         """构建第一层基学习器"""
+
         for bl_config in self.config.base_learners:
             name = bl_config.name
             model_type = bl_config.type
@@ -283,6 +355,7 @@ class StackingRiskModel:
 
     def _build_meta_learner(self) -> None:
         """构建第二层元学习器"""
+
         params = self.config.meta_learner.params
         self.meta_learner = _create_logistic_regression(**params)
         logger.info("元学习器已初始化")
@@ -293,6 +366,7 @@ class StackingRiskModel:
 
         采用 5 折时序交叉验证（OOF）防止数据泄露
         """
+
         try:
             X_arr = _to_numpy(X)
             y_arr = np.asarray(y, dtype=int)
@@ -369,6 +443,7 @@ class StackingRiskModel:
 
     def _generate_meta_features(self, X: Union[pd.DataFrame, np.ndarray]) -> np.ndarray:
         """生成元特征矩阵（用于元学习器输入和 SHAP 解释）"""
+
         X_arr = _to_numpy(X)
         n_samples = X_arr.shape[0]
         n_base = len(self.base_learners)
@@ -386,6 +461,7 @@ class StackingRiskModel:
 
     def _expected_input_dim(self) -> Optional[int]:
         """Return the feature dimension learned by this artifact, if available."""
+
         if self.n_features_in_ is not None:
             return int(self.n_features_in_)
 
@@ -408,6 +484,7 @@ class StackingRiskModel:
         Returns:
             包含预测结果的字典或列表
         """
+
         try:
             X_arr = _to_numpy(X)
             expected_dim = self._expected_input_dim()
@@ -449,6 +526,7 @@ class StackingRiskModel:
 
     def _compute_shap(self, X: Union[pd.DataFrame, np.ndarray], meta_features: np.ndarray) -> List[List[Dict[str, Any]]]:
         """计算 SHAP 特征贡献度（Top3）"""
+
         contributions = []
         try:
             if self.shap_explainer is None and shap is not None:
@@ -498,6 +576,7 @@ class StackingRiskModel:
 
     def save(self, path: str) -> None:
         """保存模型"""
+
         joblib.dump({
             "base_learners": self.base_learners,
             "meta_learner": self.meta_learner,
@@ -510,6 +589,7 @@ class StackingRiskModel:
 
     def load(self, path: str) -> None:
         """加载模型"""
+
         from mining_risk_common.compat.pickle_legacy import register_legacy_pickle_modules
 
         register_legacy_pickle_modules()

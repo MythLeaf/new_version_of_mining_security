@@ -20,6 +20,7 @@ from mining_risk_common.utils.config import get_config, resolve_project_path
 class DemoIterationError(ValueError):
     """Raised when a demo iteration step is not allowed."""
 
+
     def __init__(
         self,
         message: str,
@@ -27,6 +28,7 @@ class DemoIterationError(ValueError):
         record: Optional[IterationRecord] = None,
         status_code: int = 400,
     ):
+        """初始化 DemoIterationError；参数含义见类型注解与类文档。"""
         super().__init__(message)
         self.record = record
         self.status_code = status_code
@@ -35,11 +37,13 @@ class DemoIterationError(ValueError):
 class DemoIterationRunner:
     """Run the demo-mode iteration lifecycle against IterationRecord state."""
 
+
     CANARY_RATIOS = [0.0, 0.1, 0.5, 1.0]
     REGRESSION_FAIL_BATCHES = {"regression_fail", "regression_block"}
     DRIFT_HIGH_BATCHES = {"drift_high", "drift_high_block"}
 
     def __init__(self, replay_service: Optional[DemoReplayService] = None):
+        """初始化 DemoIterationRunner；参数含义见类型注解与类文档。"""
         self.config = get_config()
         self.replay_service = replay_service or DemoReplayService()
         self.state_store = self.replay_service.state_store
@@ -59,6 +63,16 @@ class DemoIterationRunner:
         self.audit_dir = resolve_project_path("var/audit/iterations")
 
     def train_candidate(self, iteration_id: str) -> Dict[str, Any]:
+        """
+        train candidate。
+
+        Args:
+                iteration_id (str): 参数 ``iteration_id``。
+
+        Returns:
+                (Dict[str, Any]): 函数返回值。
+        """
+
         record = self._load_record(iteration_id)
         if not record.triggered:
             report = {
@@ -145,6 +159,16 @@ class DemoIterationRunner:
         )
 
     def run_regression_test(self, iteration_id: str) -> Dict[str, Any]:
+        """
+        run regression test。
+
+        Args:
+                iteration_id (str): 参数 ``iteration_id``。
+
+        Returns:
+                (Dict[str, Any]): 函数返回值。
+        """
+
         record = self._load_record(iteration_id)
         self._require_status(record, ["REGRESSION_PENDING"], "run_regression_test")
 
@@ -174,6 +198,16 @@ class DemoIterationRunner:
         return self._step_response(record, report=report, message=message)
 
     def run_drift_analysis(self, iteration_id: str) -> Dict[str, Any]:
+        """
+        run drift analysis。
+
+        Args:
+                iteration_id (str): 参数 ``iteration_id``。
+
+        Returns:
+                (Dict[str, Any]): 函数返回值。
+        """
+
         record = self._load_record(iteration_id)
         self._require_status(record, ["DRIFT_PENDING"], "run_drift_analysis")
 
@@ -205,6 +239,16 @@ class DemoIterationRunner:
         return self._step_response(record, report=report, message=message)
 
     def create_pr_metadata(self, iteration_id: str) -> Dict[str, Any]:
+        """
+        create pr metadata。
+
+        Args:
+                iteration_id (str): 参数 ``iteration_id``。
+
+        Returns:
+                (Dict[str, Any]): 函数返回值。
+        """
+
         record = self._load_record(iteration_id)
         self._require_status(record, ["PR_PENDING"], "create_pr_metadata")
         self._require_quality_gates(record, require_ci=False)
@@ -231,6 +275,16 @@ class DemoIterationRunner:
         return self._step_response(record, report=report, message="local PR metadata generated")
 
     def run_ci_precheck(self, iteration_id: str) -> Dict[str, Any]:
+        """
+        run ci precheck。
+
+        Args:
+                iteration_id (str): 参数 ``iteration_id``。
+
+        Returns:
+                (Dict[str, Any]): 函数返回值。
+        """
+
         record = self._load_record(iteration_id)
         self._require_status(record, ["CI_PENDING", "CI_FAILED"], "run_ci_precheck")
 
@@ -281,6 +335,16 @@ class DemoIterationRunner:
         approver: str = "demo_safety_reviewer",
         note: str = "demo safety approval",
     ) -> Dict[str, Any]:
+        """
+        approve safety。
+
+        Args:
+                iteration_id (str): 参数 ``iteration_id``。
+
+        Returns:
+                (Dict[str, Any]): 函数返回值。
+        """
+
         record = self._load_record(iteration_id)
         self._require_status(record, ["APPROVAL_PENDING"], "approve_safety")
         self._require_quality_gates(record)
@@ -296,6 +360,16 @@ class DemoIterationRunner:
         approver: str = "demo_tech_reviewer",
         note: str = "demo technical approval",
     ) -> Dict[str, Any]:
+        """
+        approve tech。
+
+        Args:
+                iteration_id (str): 参数 ``iteration_id``。
+
+        Returns:
+                (Dict[str, Any]): 函数返回值。
+        """
+
         record = self._load_record(iteration_id)
         self._require_status(record, ["SAFETY_APPROVED"], "approve_tech")
         report = self._write_approval(record, "tech", approver, note)
@@ -304,6 +378,16 @@ class DemoIterationRunner:
         return self._step_response(record, report=report, message="technical approval recorded")
 
     def start_staging(self, iteration_id: str) -> Dict[str, Any]:
+        """
+        start staging。
+
+        Args:
+                iteration_id (str): 参数 ``iteration_id``。
+
+        Returns:
+                (Dict[str, Any]): 函数返回值。
+        """
+
         record = self._load_record(iteration_id)
         self._require_status(record, ["STAGING_PENDING"], "start_staging")
 
@@ -335,6 +419,16 @@ class DemoIterationRunner:
         return self._step_response(record, report=report, message="staging started")
 
     def complete_staging_demo(self, iteration_id: str) -> Dict[str, Any]:
+        """
+        complete staging demo。
+
+        Args:
+                iteration_id (str): 参数 ``iteration_id``。
+
+        Returns:
+                (Dict[str, Any]): 函数返回值。
+        """
+
         record = self._load_record(iteration_id)
         self._require_status(record, ["STAGING_RUNNING"], "complete_staging_demo")
 
@@ -374,6 +468,16 @@ class DemoIterationRunner:
         target_percentage: Optional[float] = None,
         operator: str = "demo_operator",
     ) -> Dict[str, Any]:
+        """
+        advance canary。
+
+        Args:
+                iteration_id (str): 参数 ``iteration_id``。
+
+        Returns:
+                (Dict[str, Any]): 函数返回值。
+        """
+
         record = self._load_record(iteration_id)
         self._require_status(record, ["CANARY_READY", "CANARY_RUNNING"], "advance_canary")
 
@@ -445,6 +549,16 @@ class DemoIterationRunner:
         return self._step_response(record, report=report, message=message)
 
     def archive_audit(self, iteration_id: str) -> Dict[str, Any]:
+        """
+        archive audit。
+
+        Args:
+                iteration_id (str): 参数 ``iteration_id``。
+
+        Returns:
+                (Dict[str, Any]): 函数返回值。
+        """
+
         record = self._load_record(iteration_id)
         self._require_status(
             record,
@@ -484,6 +598,16 @@ class DemoIterationRunner:
         return self._step_response(record, report=audit, message="audit archive written")
 
     def run_next_step(self, iteration_id: str) -> Dict[str, Any]:
+        """
+        run next step。
+
+        Args:
+                iteration_id (str): 参数 ``iteration_id``。
+
+        Returns:
+                (Dict[str, Any]): 函数返回值。
+        """
+
         record = self._load_record(iteration_id)
         action = next((item for item in record.next_actions if item.get("enabled")), None)
         if not action:
@@ -509,6 +633,16 @@ class DemoIterationRunner:
         return dispatch[action_name]()
 
     def run_to_end(self, iteration_id: str) -> Dict[str, Any]:
+        """
+        run to end。
+
+        Args:
+                iteration_id (str): 参数 ``iteration_id``。
+
+        Returns:
+                (Dict[str, Any]): 函数返回值。
+        """
+
         steps: List[Dict[str, Any]] = []
         while True:
             record = self._load_record(iteration_id)
@@ -561,6 +695,16 @@ class DemoIterationRunner:
         )
 
     def get_audit(self, iteration_id: str) -> Dict[str, Any]:
+        """
+        get audit。
+
+        Args:
+                iteration_id (str): 参数 ``iteration_id``。
+
+        Returns:
+                (Dict[str, Any]): 函数返回值。
+        """
+
         record = self._load_record(iteration_id)
         path_text = record.metadata.get("audit_archive_path")
         if not path_text:
@@ -573,6 +717,16 @@ class DemoIterationRunner:
         return {"audit_archive_path": str(path), "audit": payload}
 
     def get_reports(self, iteration_id: str) -> Dict[str, Any]:
+        """
+        get reports。
+
+        Args:
+                iteration_id (str): 参数 ``iteration_id``。
+
+        Returns:
+                (Dict[str, Any]): 函数返回值。
+        """
+
         record = self._load_record(iteration_id)
         reports = {
             report_type: self._report_item(record, report_type)
@@ -586,6 +740,17 @@ class DemoIterationRunner:
         }
 
     def get_report(self, iteration_id: str, report_type: str) -> Dict[str, Any]:
+        """
+        get report。
+
+        Args:
+                iteration_id (str): 参数 ``iteration_id``。
+                report_type (str): 参数 ``report_type``。
+
+        Returns:
+                (Dict[str, Any]): 函数返回值。
+        """
+
         record = self._load_record(iteration_id)
         normalized_type = report_type.lower()
         path_map = self._report_path_map(record)
@@ -611,6 +776,7 @@ class DemoIterationRunner:
         }
 
     def _load_record(self, iteration_id: str) -> IterationRecord:
+        """内部辅助方法 ``_load_record``；参数与返回值见类型注解。"""
         record = self.state_store.get_record(iteration_id)
         if record is None:
             raise DemoIterationError(f"iteration record not found: {iteration_id}", status_code=404)
@@ -622,6 +788,7 @@ class DemoIterationRunner:
         return record
 
     def _save(self, record: IterationRecord) -> IterationRecord:
+        """内部辅助方法 ``_save``；参数与返回值见类型注解。"""
         record.metadata["demo_mode"] = True
         record.metadata["training_mode"] = "demo_fast_mode"
         record.metadata.pop("next_actions", None)
@@ -637,6 +804,7 @@ class DemoIterationRunner:
         message: str,
         details: Optional[Dict[str, Any]] = None,
     ) -> None:
+        """内部辅助方法 ``_append_event``；参数与返回值见类型注解。"""
         record.timeline.append(
             TimelineEvent(
                 event=event,
@@ -653,6 +821,7 @@ class DemoIterationRunner:
         allowed_statuses: Sequence[str],
         step: str,
     ) -> None:
+        """内部辅助方法 ``_require_status``；参数与返回值见类型注解。"""
         if record.current_status in allowed_statuses:
             return
         allowed_text = ", ".join(allowed_statuses)
@@ -671,11 +840,13 @@ class DemoIterationRunner:
         reason: str,
         status: str = "FAILED",
     ) -> IterationRecord:
+        """内部辅助方法 ``_fail``；参数与返回值见类型注解。"""
         record.metadata["blocked_reason"] = reason
         self._append_event(record, event, status, reason, {"blocked_reason": reason})
         return self._save(record)
 
     def _require_quality_gates(self, record: IterationRecord, *, require_ci: bool = True) -> None:
+        """内部辅助方法 ``_require_quality_gates``；参数与返回值见类型注解。"""
         regression = record.metadata.get("regression_report") or {}
         drift = record.metadata.get("drift_report") or {}
         if not regression.get("pass") or not drift.get("pass"):
@@ -690,6 +861,7 @@ class DemoIterationRunner:
                 raise DemoIterationError(reason, record=record)
 
     def _build_regression_report(self, record: IterationRecord) -> Dict[str, Any]:
+        """内部辅助方法 ``_build_regression_report``；参数与返回值见类型注解。"""
         batch_id = record.batch_id
         failed = batch_id in self.REGRESSION_FAIL_BATCHES
         if failed:
@@ -741,6 +913,7 @@ class DemoIterationRunner:
         }
 
     def _build_drift_report(self, record: IterationRecord) -> Dict[str, Any]:
+        """内部辅助方法 ``_build_drift_report``；参数与返回值见类型注解。"""
         high = record.batch_id in self.DRIFT_HIGH_BATCHES
         risk_level = "high" if high else ("medium" if record.batch_id == "f1_drop_retrain" else "low")
         psi = 0.42 if high else (0.19 if risk_level == "medium" else 0.11)
@@ -767,6 +940,7 @@ class DemoIterationRunner:
         }
 
     def _build_pr_metadata(self, record: IterationRecord) -> Dict[str, Any]:
+        """内部辅助方法 ``_build_pr_metadata``；参数与返回值见类型注解。"""
         regression = record.metadata.get("regression_report") or {}
         drift = record.metadata.get("drift_report") or {}
         model_version = str(record.metadata.get("model_version") or "demo-candidate")
@@ -810,6 +984,7 @@ class DemoIterationRunner:
         }
 
     def _build_ci_report(self, record: IterationRecord) -> Dict[str, Any]:
+        """内部辅助方法 ``_build_ci_report``；参数与返回值见类型注解。"""
         regression = record.metadata.get("regression_report") or {}
         drift = record.metadata.get("drift_report") or {}
         candidate_model_path = record.metadata.get("candidate_model_path")
@@ -866,6 +1041,7 @@ class DemoIterationRunner:
         }
 
     def _old_model_version(self) -> str:
+        """内部辅助方法 ``_old_model_version``；参数与返回值见类型注解。"""
         if self.production_pointer_path.exists():
             try:
                 with self.production_pointer_path.open("r", encoding="utf-8") as f:
@@ -884,6 +1060,7 @@ class DemoIterationRunner:
         approver: str,
         note: str,
     ) -> Dict[str, Any]:
+        """内部辅助方法 ``_write_approval``；参数与返回值见类型注解。"""
         report = {
             "iteration_id": record.iteration_id,
             "batch_id": record.batch_id,
@@ -912,6 +1089,7 @@ class DemoIterationRunner:
         return report
 
     def _next_canary_ratio(self, current: float) -> float:
+        """内部辅助方法 ``_next_canary_ratio``；参数与返回值见类型注解。"""
         rounded = round(current, 3)
         for index, ratio in enumerate(self.CANARY_RATIOS):
             if round(ratio, 3) == rounded and index + 1 < len(self.CANARY_RATIOS):
@@ -919,12 +1097,14 @@ class DemoIterationRunner:
         raise DemoIterationError(f"no canary level after {current}")
 
     def _write_json(self, path: Path, payload: Dict[str, Any]) -> Path:
+        """内部辅助方法 ``_write_json``；参数与返回值见类型注解。"""
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("w", encoding="utf-8") as f:
             json.dump(payload, f, ensure_ascii=False, indent=2)
         return path
 
     def _report_path_map(self, record: IterationRecord) -> Dict[str, Optional[str]]:
+        """内部辅助方法 ``_report_path_map``；参数与返回值见类型注解。"""
         return {
             "replay": record.report_path,
             "upload": record.metadata.get("upload_report_path"),
@@ -938,6 +1118,7 @@ class DemoIterationRunner:
         }
 
     def _report_item(self, record: IterationRecord, report_type: str) -> Dict[str, Any]:
+        """内部辅助方法 ``_report_item``；参数与返回值见类型注解。"""
         path_text = self._report_path_map(record).get(report_type)
         if not path_text:
             return {
@@ -976,6 +1157,7 @@ class DemoIterationRunner:
         report: Optional[Dict[str, Any]],
         message: str,
     ) -> Dict[str, Any]:
+        """内部辅助方法 ``_step_response``；参数与返回值见类型注解。"""
         payload = record.to_dict()
         return {
             "iteration_id": record.iteration_id,

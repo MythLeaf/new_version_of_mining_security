@@ -20,7 +20,15 @@ logger = get_logger(__name__)
 
 
 class DataUploadRequest(BaseModel):
-    """数据上传请求模型"""
+    """API 单条/批量数据上传的请求体模型。
+
+    Attributes:
+        enterprise_id (str): 企业唯一标识（统一社会信用代码或内部 ID）。
+        data_format (str): 载荷格式，``csv`` / ``excel`` / ``json`` 之一。
+        content (Union[str, bytes, Dict]): 文件正文或 JSON 对象。
+        timestamp (Optional[str]): 可选上报时间戳字符串。
+    """
+
     enterprise_id: str
     data_format: str = Field(default="csv", pattern="^(csv|excel|json)$")
     content: Union[str, bytes, Dict]
@@ -29,6 +37,18 @@ class DataUploadRequest(BaseModel):
     @field_validator("data_format")
     @classmethod
     def validate_format(cls, v: str) -> str:
+        """
+                校验上传数据格式是否在允许集合内。
+            
+                Args:
+                    v (str): 数据格式，须为 csv/excel/json 之一。
+            
+                Returns:
+                    str: 规范化后的小写格式名。
+            
+                Raises:
+                    ValueError: 格式不在白名单时。
+        """
         allowed = {"csv", "excel", "json"}
         if v not in allowed:
             raise ValueError(f"不支持的格式: {v}，仅支持 {allowed}")
@@ -46,7 +66,14 @@ class DataLoader:
     4. 自动识别编码并统一转换为 DataFrame
     """
 
+
     def __init__(self, raw_data_path: Optional[str] = None):
+        """初始化数据加载器并解析配置中的路径。
+
+        Args:
+            raw_data_path (Optional[str]): 原始数据目录；为 None 时使用
+                ``config.data.raw_data_path``。相对路径基于项目根解析。
+        """
         config = get_config()
         self.raw_data_path = str(
             self._resolve_existing_path(raw_data_path)
@@ -78,11 +105,28 @@ class DataLoader:
 
     @staticmethod
     def _resolve_path(path: Union[str, Path]) -> Path:
-        """Resolve configured relative paths from the project root."""
+        """将配置中的相对路径解析为基于项目根的绝对路径。
+
+        Args:
+            path (Union[str, Path]): 相对或绝对路径。
+
+        Returns:
+            Path: 解析后的绝对路径。
+        """
+
         return resolve_project_path(path)
 
     @staticmethod
     def _resolve_existing_path(path: Union[str, Path]) -> Path:
+        """
+                解析路径；存在或绝对路径则直接 resolve，否则按项目根拼接。
+            
+                Args:
+                    path (str | Path): 原始路径。
+            
+                Returns:
+                    Path: 绝对路径。
+        """
         path_obj = Path(path)
         if path_obj.exists() or path_obj.is_absolute():
             return path_obj.resolve()
@@ -90,6 +134,15 @@ class DataLoader:
 
     @staticmethod
     def _supported_suffixes(formats: Sequence[str]) -> set[str]:
+        """
+                根据数据格式配置生成允许的文件后缀集合。
+            
+                Args:
+                    formats (Sequence[str]): csv/excel/json 等。
+            
+                Returns:
+                    set[str]: 后缀集合。
+        """
         suffixes: set[str] = set()
         for fmt in formats:
             normalized = fmt.lower().lstrip(".")
@@ -101,6 +154,15 @@ class DataLoader:
 
     @staticmethod
     def _unique_encodings(encodings: Sequence[str]) -> List[str]:
+        """
+                编码列表去重并保持顺序。
+            
+                Args:
+                    encodings (Sequence[str]): 候选编码。
+            
+                Returns:
+                    List[str]: 去重列表。
+        """
         unique: List[str] = []
         for encoding in encodings:
             if encoding and encoding not in unique:
@@ -109,11 +171,31 @@ class DataLoader:
 
     @staticmethod
     def _clean_column_name(column: object, index: int) -> str:
+        """
+                清洗列名，空名回退为 Unnamed: {index}。
+            
+                Args:
+                    column (object): 原始列名。
+                    index (int): 列序号。
+            
+                Returns:
+                    str: 规范列名。
+        """
         name = "" if column is None else str(column)
         name = name.replace("\ufeff", "").strip()
         return name or f"Unnamed: {index}"
 
     def _deduplicate_columns(self, columns: Sequence[object], source: str = "") -> List[str]:
+        """
+                重复列名追加 __dupN 后缀。
+            
+                Args:
+                    columns (Sequence[object]): 列名序列。
+                    source (str): 日志用来源描述。
+            
+                Returns:
+                    List[str]: 去重后列名。
+        """
         counts: Dict[str, int] = {}
         deduplicated: List[str] = []
         renamed: List[str] = []
@@ -138,6 +220,17 @@ class DataLoader:
         return deduplicated
 
     def _read_csv_header(self, file_path: Path, encoding: str, kwargs: Dict) -> Optional[List[str]]:
+        """
+                仅读取 CSV 首行表头。
+            
+                Args:
+                    file_path (Path): 文件路径。
+                    encoding (str): 编码。
+                    kwargs (Dict): read_csv 参数。
+            
+                Returns:
+                    Optional[List[str]]: 表头或 None。
+        """
         header = kwargs.get("header", "infer")
         if kwargs.get("names") is not None or header not in ("infer", 0):
             return None
@@ -156,6 +249,19 @@ class DataLoader:
                 return []
 
     def _read_csv_with_fallback(self, file_path: Path, **kwargs) -> pd.DataFrame:
+        """
+                多编码回退读取 CSV。
+            
+                Args:
+                    file_path (Path): 文件路径。
+                    **kwargs: read_csv 参数。
+            
+                Returns:
+                    pd.DataFrame: 数据表。
+            
+                Raises:
+                    DataLoadingError: 全部编码失败。
+        """
         read_kwargs = dict(kwargs)
         requested_encoding = read_kwargs.pop("encoding", None) or self.encoding
         encodings = self._unique_encodings(
@@ -194,12 +300,32 @@ class DataLoader:
 
     @staticmethod
     def _drop_unsupported_kwargs(ext: str, kwargs: Dict) -> Dict:
+        """
+                按扩展名剔除不支持的读取参数。
+            
+                Args:
+                    ext (str): 后缀。
+                    kwargs (Dict): 原始参数。
+            
+                Returns:
+                    Dict: 清理后参数。
+        """
         cleaned = dict(kwargs)
         if ext in {".xlsx", ".xls", ".json"}:
             cleaned.pop("low_memory", None)
         return cleaned
 
     def _iter_data_files(self, directory: Path, pattern: str = "*") -> List[Path]:
+        """
+                递归枚举支持格式的数据文件。
+            
+                Args:
+                    directory (Path): 根目录。
+                    pattern (str): rglob 通配。
+            
+                Returns:
+                    List[Path]: 文件路径列表。
+        """
         return sorted(
             path
             for path in directory.rglob(pattern)
@@ -208,6 +334,17 @@ class DataLoader:
 
     @staticmethod
     def _result_key(file_path: Path, root: Path, existing: Dict[str, pd.DataFrame]) -> str:
+        """
+                生成批量加载结果的唯一字典键。
+            
+                Args:
+                    file_path (Path): 文件路径。
+                    root (Path): 扫描根。
+                    existing (Dict): 已有结果。
+            
+                Returns:
+                    str: 字典键。
+        """
         try:
             key = file_path.relative_to(root).with_suffix("").as_posix()
         except ValueError:
@@ -231,6 +368,7 @@ class DataLoader:
         Returns:
             解压后的目录路径
         """
+
         if not os.path.exists(zip_path):
             raise DataLoadingError(f"ZIP 文件不存在: {zip_path}")
         
@@ -260,6 +398,7 @@ class DataLoader:
         Returns:
             DataFrame
         """
+
         resolved_path = self._resolve_existing_path(file_path)
         if not resolved_path.exists():
             raise DataLoadingError(f"文件不存在: {resolved_path}")
@@ -308,6 +447,7 @@ class DataLoader:
         Returns:
             文件名 -> DataFrame 的字典
         """
+
         directory_path = self._resolve_existing_path(directory or self.raw_data_path)
         if not directory_path.exists():
             raise DataLoadingError(f"目录不存在: {directory_path}")
@@ -334,6 +474,7 @@ class DataLoader:
         **kwargs,
     ) -> Dict[str, pd.DataFrame]:
         """递归加载公开数据根目录下所有受支持的 CSV/XLSX/JSON 文件。"""
+
         if paths is None:
             target_paths = list(self.all_public_data_paths)
         elif isinstance(paths, (str, Path)):
@@ -373,6 +514,7 @@ class DataLoader:
         Returns:
             DataFrame
         """
+
         fmt = request.data_format
         content = request.content
         
@@ -416,6 +558,7 @@ class DataLoader:
         Returns:
             完整训练 DataFrame，含目标列 new_level（A/B/C/D）
         """
+
         merged_path = self.merged_data_path
         if not merged_path:
             raise DataLoadingError("config.data.merged_data_path 未配置")
@@ -450,6 +593,7 @@ class DataLoader:
         Returns:
             合并后的 DataFrame
         """
+
         if not tables:
             raise DataLoadingError("输入表字典为空")
 
@@ -539,9 +683,23 @@ class DataLoader:
         return merged
 
     def get_cached(self, key: str) -> Optional[pd.DataFrame]:
-        """获取缓存的数据"""
+        """读取内存缓存中的 DataFrame。
+
+        Args:
+            key (str): 缓存键，通常与 ``load_directory`` 返回的字典键一致。
+
+        Returns:
+            Optional[pd.DataFrame]: 命中时返回表，未命中返回 None。
+        """
+
         return self._cache.get(key)
 
     def set_cache(self, key: str, df: pd.DataFrame) -> None:
-        """设置缓存"""
+        """将 DataFrame 写入实例级内存缓存。
+
+        Args:
+            key (str): 缓存键。
+            df (pd.DataFrame): 待缓存的数据表。
+        """
+
         self._cache[key] = df
