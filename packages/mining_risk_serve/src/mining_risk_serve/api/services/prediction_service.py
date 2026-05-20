@@ -22,6 +22,7 @@ from mining_risk_serve.api.schemas.prediction import (
     PredictResponse,
     ScenarioSwitchResponse,
 )
+from mining_risk_serve.api.services.decision_approval import enqueue_decision_review
 from mining_risk_serve.api.services.decision_store import DecisionStore, get_decision_settings
 from mining_risk_serve.api.services.dependencies import ResourceRegistry, get_registry, mock_fallback_enabled
 from mining_risk_common.dataplane.field_normalizer import normalize_enterprise_record
@@ -465,6 +466,15 @@ class PredictionService:
             )
             response.output_path = output.get("path")
             response.output_display_path = output.get("display_path")
+            try:
+                enqueue_decision_review(
+                    request=request,
+                    response=response,
+                    output=output,
+                    source=source,
+                )
+            except Exception as queue_err:
+                logger.warning("决策审批入队失败: %s", queue_err)
             return output
         except Exception as exc:
             logger.warning("完整决策结果输出失败: %s", exc)

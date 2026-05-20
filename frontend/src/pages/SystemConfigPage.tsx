@@ -19,32 +19,38 @@ interface Props {
 const WORKFLOW_NODES = [
   {
     name: "数据接入",
-    tag: "HTTP / CSV / Excel",
+    tags: ["HTTP", "CSV", "Excel"],
+    tagColor: "cyan" as const,
     desc: "接收政府监管平台推送的企业动态数据，并读取 Harness 挂载的 Markdown 静态知识库。",
   },
   {
     name: "风险评估",
-    tag: "Stacking + SHAP",
+    tags: ["Stacking", "SHAP"],
+    tagColor: "blue" as const,
     desc: "加载序列化预警模型，输出红橙黄蓝四分类概率、置信度与 Top3 特征归因。",
   },
   {
     name: "记忆召回",
-    tag: "AgentFS + RAG",
+    tags: ["AgentFS", "RAG"],
+    tagColor: "violet" as const,
     desc: "从 SQLite/Git 快照与长期知识库召回相似案例，经重排序后压缩为决策上下文。",
   },
   {
     name: "决策生成",
-    tag: "LangGraph DAG",
+    tags: ["LangGraph", "DAG"],
+    tagColor: "amber" as const,
     desc: "按风险等级生成结构化处置建议，覆盖核心归因、政府协同干预与企业设施管控。",
   },
   {
     name: "合规校验",
-    tag: "MARCH + Monte Carlo",
+    tags: ["MARCH", "Monte Carlo"],
+    tagColor: "emerald" as const,
     desc: "执行合规红线、工况逻辑、处置可行性三重审核，并用置信度采样拦截高风险输出。",
   },
   {
     name: "结果推送",
-    tag: "Audit Trail",
+    tags: ["Audit Trail"],
+    tagColor: "orange" as const,
     desc: "将最终 Payload 写入审计链路；触发人工审核、驳回或准入等闭环状态。",
   },
 ];
@@ -366,18 +372,34 @@ export default function SystemConfigPage({ scenario, health }: Props) {
       </table>
 
       <div className="subtitle">智能体后端工作流</div>
-      <div className="workflow-strip">
-        {WORKFLOW_NODES.map((node, index) => (
-          <div className="workflow-node-card" key={node.name}>
-            <div className="workflow-node-index font-mono">{index + 1}</div>
-            <div>
-              <div className="workflow-node-title">{node.name}</div>
-              <div className="workflow-node-tag">{node.tag}</div>
-              <div className="workflow-node-desc">{node.desc}</div>
-            </div>
-          </div>
-        ))}
-      </div>
+      <section className="agent-workflow-panel" aria-label="智能体后端工作流">
+        <p className="agent-workflow-intro">
+          LangGraph 编排的六段式决策链路：多源接入 → 风险预测 → 记忆增强 → 结构化生成 → 三重校验 → 审计闭环。
+        </p>
+        <ol className="agent-workflow-grid">
+          {WORKFLOW_NODES.map((node, index) => (
+            <li
+              className={`agent-workflow-step agent-workflow-step--${node.tagColor}`}
+              key={node.name}
+            >
+              <div className="agent-workflow-step-head">
+                <span className="agent-workflow-step-num font-mono" aria-hidden="true">
+                  {String(index + 1).padStart(2, "0")}
+                </span>
+                <h3 className="agent-workflow-step-title">{node.name}</h3>
+              </div>
+              <div className="agent-workflow-step-tags">
+                {node.tags.map((t) => (
+                  <span key={t} className={`tag tag-${node.tagColor}`}>
+                    {t}
+                  </span>
+                ))}
+              </div>
+              <p className="agent-workflow-step-desc">{node.desc}</p>
+            </li>
+          ))}
+        </ol>
+      </section>
 
       <div className="row cols-2" style={{ marginTop: 12 }}>
         <div>

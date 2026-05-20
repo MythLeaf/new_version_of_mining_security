@@ -24,6 +24,10 @@ from mining_risk_serve.api.schemas.knowledge import (
 from mining_risk_serve.api.schemas.prediction import (
   BatchDecisionResponse,
   BatchJobStatus,
+  DecisionApprovalSyncResponse,
+  DecisionRecordDetail,
+  DecisionRecordListResponse,
+  DecisionRecordSummary,
   VALID_SCENARIO_IDS,
   DecisionRequest,
   DecisionResponse,

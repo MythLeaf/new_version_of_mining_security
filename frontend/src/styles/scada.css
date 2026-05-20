@@ -141,6 +141,22 @@ select {
   gap: 6px;
 }
 
+.status-bar-scenario {
+  gap: 8px;
+}
+
+.status-bar-scenario-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.status-bar-scenario-select {
+  min-width: 148px;
+  padding: 4px 28px 4px 10px;
+  font-size: 12px;
+}
+
 .status-dot {
   width: 8px;
   height: 8px;
@@ -1107,7 +1123,8 @@ select {
 }
 
 .risk-factor-item {
-  display: flex;
+  display: grid;
+  grid-template-columns: 9rem minmax(0, 1fr) 3rem;
   align-items: center;
   gap: 12px;
   padding: 10px 0;
@@ -1121,11 +1138,13 @@ select {
 .risk-factor-name {
   font-size: 13px;
   color: var(--text-secondary);
-  min-width: 120px;
+  width: 9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .risk-factor-bar {
-  flex: 1;
   height: 8px;
   background: var(--border-dim);
   border-radius: 4px;
@@ -1508,6 +1527,70 @@ select {
   border-bottom: 1px solid rgba(59, 130, 246, 0.2);
 }
 
+.batch-job-banner {
+  padding: 8px 24px 10px;
+  font-size: 12px;
+  background: rgba(56, 189, 248, 0.1);
+  color: #bae6fd;
+  border-bottom: 1px solid rgba(56, 189, 248, 0.25);
+}
+
+.batch-job-banner-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.batch-job-banner-title {
+  font-weight: 600;
+  color: #7dd3fc;
+}
+
+.batch-job-banner-bar {
+  height: 4px;
+  margin-top: 6px;
+  background: #1e293b;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.batch-job-banner-fill {
+  height: 100%;
+  background: #38bdf8;
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
+
+.batch-job-banner-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.batch-job-banner-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #38bdf8;
+  font-size: 12px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.batch-job-banner-link:hover {
+  color: #7dd3fc;
+}
+
+.batch-job-banner-link-danger {
+  color: #f87171;
+}
+
+.batch-job-banner-link-danger:hover {
+  color: #fca5a5;
+}
+
 .demo-data-banner {
   margin-bottom: 12px;
 }
@@ -1630,6 +1713,10 @@ select {
   flex-shrink: 0;
 }
 
+body.modal-scroll-lock {
+  overflow: hidden;
+}
+
 .knowledge-preview-overlay {
   position: fixed;
   inset: 0;
@@ -1639,6 +1726,7 @@ select {
   align-items: center;
   justify-content: center;
   padding: 24px;
+  overscroll-behavior: none;
 }
 
 .knowledge-preview-panel {
@@ -1674,11 +1762,203 @@ select {
   padding: 16px;
   overflow: auto;
   flex: 1;
+  min-height: 0;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
   font-family: "JetBrains Mono", monospace;
   font-size: 12px;
   line-height: 1.6;
   color: var(--text-secondary);
   white-space: pre-wrap;
+}
+
+/* 弹窗内禁用卡片 hover 位移，避免滚动时鼠标经过触发频闪 */
+.in-modal .scada-card:hover {
+  transform: none;
+  box-shadow: var(--shadow-md);
+}
+
+.in-modal .risk-red-pulse {
+  animation: none;
+  box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.35), var(--shadow-md);
+}
+
+/* ─── 智能体后端工作流（系统配置页） ─── */
+.agent-workflow-panel {
+  margin: 4px 0 22px;
+  padding: 20px 22px 22px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-mid);
+  background: linear-gradient(
+    155deg,
+    rgba(15, 23, 42, 0.94) 0%,
+    rgba(20, 28, 46, 0.9) 55%,
+    rgba(12, 18, 32, 0.92) 100%
+  );
+  backdrop-filter: blur(14px);
+  box-shadow: var(--shadow-md), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.agent-workflow-intro {
+  margin: 0 0 18px;
+  padding: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  max-width: 72ch;
+}
+
+.agent-workflow-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.agent-workflow-step {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 16px 14px;
+  background: linear-gradient(135deg, var(--bg-card) 0%, #111b2e 100%);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-md);
+  position: relative;
+  overflow: hidden;
+  transition: transform var(--transition-normal), box-shadow var(--transition-normal),
+    border-color var(--transition-normal);
+}
+
+.agent-workflow-step::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  opacity: 0.9;
+}
+
+.agent-workflow-step:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-mid);
+  box-shadow: var(--shadow-md);
+}
+
+.agent-workflow-step--cyan::before {
+  background: linear-gradient(90deg, var(--accent-cyan), rgba(6, 182, 212, 0.35));
+}
+
+.agent-workflow-step--blue::before {
+  background: linear-gradient(90deg, var(--accent-blue), rgba(59, 130, 246, 0.35));
+}
+
+.agent-workflow-step--violet::before {
+  background: linear-gradient(90deg, var(--accent-violet), rgba(139, 92, 246, 0.35));
+}
+
+.agent-workflow-step--amber::before {
+  background: linear-gradient(90deg, var(--accent-amber), rgba(245, 158, 11, 0.35));
+}
+
+.agent-workflow-step--emerald::before {
+  background: linear-gradient(90deg, var(--accent-emerald), rgba(16, 185, 129, 0.35));
+}
+
+.agent-workflow-step--orange::before {
+  background: linear-gradient(90deg, var(--accent-orange), rgba(249, 115, 22, 0.35));
+}
+
+.agent-workflow-step-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.agent-workflow-step-num {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent-cyan);
+  background: rgba(6, 182, 212, 0.08);
+  border: 1px solid rgba(6, 182, 212, 0.22);
+  border-radius: var(--radius-sm);
+}
+
+.agent-workflow-step--blue .agent-workflow-step-num {
+  color: #93c5fd;
+  background: rgba(59, 130, 246, 0.08);
+  border-color: rgba(59, 130, 246, 0.22);
+}
+
+.agent-workflow-step--violet .agent-workflow-step-num {
+  color: #c4b5fd;
+  background: rgba(139, 92, 246, 0.08);
+  border-color: rgba(139, 92, 246, 0.22);
+}
+
+.agent-workflow-step--amber .agent-workflow-step-num {
+  color: #fde68a;
+  background: rgba(245, 158, 11, 0.08);
+  border-color: rgba(245, 158, 11, 0.22);
+}
+
+.agent-workflow-step--emerald .agent-workflow-step-num {
+  color: #6ee7b7;
+  background: rgba(16, 185, 129, 0.08);
+  border-color: rgba(16, 185, 129, 0.22);
+}
+
+.agent-workflow-step--orange .agent-workflow-step-num {
+  color: #fdba74;
+  background: rgba(249, 115, 22, 0.08);
+  border-color: rgba(249, 115, 22, 0.22);
+}
+
+.agent-workflow-step-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 0.02em;
+  line-height: 1.3;
+}
+
+.agent-workflow-step-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.agent-workflow-step-desc {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--text-secondary);
+}
+
+@media (max-width: 1100px) {
+  .agent-workflow-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .agent-workflow-panel {
+    padding: 16px;
+  }
+
+  .agent-workflow-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .empty-state {

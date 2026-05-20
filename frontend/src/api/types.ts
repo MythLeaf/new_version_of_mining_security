@@ -193,6 +193,53 @@ export interface BatchJobStatus {
   errors: Array<Record<string, unknown>>;
 }
 
+export interface DecisionRecordSummary {
+  record_id: string;
+  enterprise_id: string;
+  enterprise_name: string;
+  scenario_id: string;
+  predicted_level: string;
+  final_status: string;
+  review_status?: string | null;
+  mock: boolean;
+  source: string;
+  job_id?: string | null;
+  created_at: string;
+  display_path: string;
+  path: string;
+  approval_status?: string | null;
+  bytes: number;
+}
+
+export interface DecisionRecordListResponse {
+  total: number;
+  items: DecisionRecordSummary[];
+  offset: number;
+  limit: number;
+}
+
+export interface DecisionRecordDetail {
+  record_id: string;
+  display_path: string;
+  created_at?: string;
+  source?: string;
+  job_id?: string | null;
+  row_index?: number | null;
+  mock: boolean;
+  request: Record<string, unknown>;
+  response: DecisionResponse;
+  memory_results?: Array<Record<string, unknown>> | null;
+  approval?: Record<string, unknown> | null;
+  final_state_summary?: Record<string, unknown> | null;
+}
+
+export interface DecisionApprovalSyncResponse {
+  scanned: number;
+  created: number;
+  skipped: number;
+  removed?: number;
+}
+
 export interface KnowledgeOverviewMetrics {
   audit_status: string;
   pass_count: number;

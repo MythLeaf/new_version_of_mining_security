@@ -569,3 +569,5 @@ class TestPromptTemplate:
         content = path.read_text(encoding="utf-8")
         assert "粉尘" in content
         assert "泄爆口" in content
+        assert "{{ risk_description }}" in content
+        assert "{{ table_column_names }}" in content

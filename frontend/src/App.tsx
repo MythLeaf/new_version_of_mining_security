@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   fetchHealth,
   fetchIterationStatus,
+  fetchMemoryStats,
   switchScenario,
 } from "./api/client";
 import type {
@@ -12,7 +13,7 @@ import type {
 import StatusBar from "./components/StatusBar";
 import Sidebar from "./components/Sidebar";
 import Tabs from "./components/Tabs";
-import { SCENARIO_NAMES } from "./data/demoData";
+import { DecisionBatchProvider } from "./context/DecisionBatchContext";
 import RiskPredictionPage from "./pages/RiskPredictionPage";
 import KnowledgeMemoryPage from "./pages/KnowledgeMemoryPage";
 import IterationPage from "./pages/IterationPage";
@@ -36,6 +37,7 @@ function tabFromHash(): string {
 export default function App() {
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [iteration, setIteration] = useState<IterationStatus | null>(null);
+  const [pendingApprovals, setPendingApprovals] = useState<number | null>(null);
   const [scenario, setScenario] = useState<ScenarioId>("chemical");
   const [demoMode, setDemoMode] = useState(false);
   const [activeTab, setActiveTab] = useState<string>(() => tabFromHash());
@@ -54,8 +56,10 @@ export default function App() {
   useEffect(() => {
     fetchHealth().then(setHealth);
     fetchIterationStatus().then(setIteration);
+    fetchMemoryStats().then((s) => setPendingApprovals(s?.pending_approvals ?? null));
     const id = setInterval(() => {
       fetchHealth().then(setHealth);
+      fetchMemoryStats().then((s) => setPendingApprovals(s?.pending_approvals ?? null));
     }, 30_000);
     return () => clearInterval(id);
   }, []);
@@ -91,14 +95,17 @@ export default function App() {
   }
 
   return (
+    <DecisionBatchProvider>
     <div className="app-shell">
       <StatusBar
         health={health}
-        scenarioName={SCENARIO_NAMES[scenario]}
+        scenario={scenario}
+        onScenarioChange={changeScenario}
         backendOnline={online}
         demoMode={demoMode}
         onMenuToggle={() => setSidebarOpen((o) => !o)}
         menuExpanded={sidebarOpen}
+        onOpenRiskTab={() => setTab("risk")}
       />
       {sidebarOpen && (
         <button
@@ -111,9 +118,8 @@ export default function App() {
       <div className="app-body">
         <Sidebar
           health={health}
-          scenario={scenario}
-          onScenarioChange={changeScenario}
           iteration={iteration}
+          pendingApprovals={pendingApprovals}
           demoMode={demoMode}
           onDemoToggle={setDemoMode}
           open={sidebarOpen}
@@ -136,5 +142,6 @@ export default function App() {
         </main>
       </div>
     </div>
+    </DecisionBatchProvider>
   );
 }

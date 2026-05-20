@@ -198,3 +198,116 @@ class DecisionStore:
                 "modified_at": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(path.stat().st_mtime)),
                 "bytes": path.stat().st_size,
             }
+
+    def _iter_decision_files(self) -> Iterable[Path]:
+        """递归扫描输出目录下所有决策 JSON（排除 manifest）。"""
+        for path in self.output_dir.rglob("*.json"):
+            if path.name == "manifest.json":
+                continue
+            if path.is_file():
+                yield path
+
+    @staticmethod
+    def record_id_from_path(path: Path, base: Path) -> str:
+        rel = path.relative_to(base)
+        return rel.as_posix()
+
+    def resolve_record_path(self, record_id: str) -> Path:
+        """将 URL 中的 record_id 解析为安全路径。"""
+        safe_id = record_id.replace("..", "").lstrip("/")
+        path = (self.output_dir / safe_id).resolve()
+        _ensure_under_var(path)
+        try:
+            path.relative_to(self.output_dir.resolve())
+        except ValueError as exc:
+            raise ValueError("无效的记录路径") from exc
+        if not path.is_file() or path.name == "manifest.json":
+            raise FileNotFoundError(f"决策记录不存在: {record_id}")
+        return path
+
+    @staticmethod
+    def _enterprise_name_from_record(record: Dict[str, Any]) -> str:
+        req = record.get("request") or {}
+        data = req.get("data") or {}
+        for key in ("企业名称", "enterprise_name", "单位名称", "公司名称"):
+            val = data.get(key)
+            if val not in (None, ""):
+                return str(val)
+        return str(req.get("enterprise_id") or record.get("response", {}).get("enterprise_id", ""))
+
+    @staticmethod
+    def _approval_status_from_record(record: Dict[str, Any]) -> Optional[str]:
+        approval = record.get("approval")
+        if isinstance(approval, dict) and approval.get("status"):
+            return str(approval["status"])
+        resp = record.get("response") or {}
+        if resp.get("review_status"):
+            return "approved" if resp["review_status"] == "APPROVED" else "rejected"
+        return None
+
+    def summarize_file(self, path: Path) -> Dict[str, Any]:
+        """读取决策文件并生成列表摘要。"""
+        with path.open("r", encoding="utf-8") as f:
+            record = json.load(f)
+        resp = record.get("response") or {}
+        req = record.get("request") or {}
+        rel = self.record_id_from_path(path, self.output_dir)
+        job_id = record.get("job_id")
+        if not job_id and "batches/" in rel:
+            parts = rel.split("/")
+            if len(parts) >= 2 and parts[0] == "batches":
+                job_id = parts[1]
+        return {
+            "record_id": rel,
+            "enterprise_id": resp.get("enterprise_id") or req.get("enterprise_id", ""),
+            "enterprise_name": self._enterprise_name_from_record(record),
+            "scenario_id": resp.get("scenario_id") or req.get("scenario_id", ""),
+            "predicted_level": resp.get("predicted_level", ""),
+            "final_status": resp.get("final_status", ""),
+            "review_status": resp.get("review_status"),
+            "mock": bool(record.get("mock")),
+            "source": record.get("source", ""),
+            "job_id": job_id,
+            "created_at": record.get("created_at") or time.strftime(
+                "%Y-%m-%d %H:%M:%S", time.localtime(path.stat().st_mtime)
+            ),
+            "display_path": _relative_display(path),
+            "path": str(path.resolve()),
+            "approval_status": self._approval_status_from_record(record),
+            "bytes": path.stat().st_size,
+        }
+
+    def list_all_summaries(
+        self,
+        *,
+        enterprise_id: Optional[str] = None,
+        final_status: Optional[str] = None,
+        source: Optional[str] = None,
+        job_id: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        items: List[Dict[str, Any]] = []
+        for path in self._iter_decision_files():
+            try:
+                summary = self.summarize_file(path)
+            except Exception as exc:
+                logger.warning("跳过无法解析的决策文件 %s: %s", path, exc)
+                continue
+            if enterprise_id and summary.get("enterprise_id") != enterprise_id:
+                continue
+            if final_status and summary.get("final_status") != final_status:
+                continue
+            if source and summary.get("source") != source:
+                continue
+            if job_id and summary.get("job_id") != job_id:
+                continue
+            items.append(summary)
+        items.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+        return items
+
+    def load_record(self, record_id: str) -> Dict[str, Any]:
+        path = self.resolve_record_path(record_id)
+        with path.open("r", encoding="utf-8") as f:
+            record = json.load(f)
+        record["record_id"] = self.record_id_from_path(path, self.output_dir)
+        record["display_path"] = _relative_display(path)
+        return record

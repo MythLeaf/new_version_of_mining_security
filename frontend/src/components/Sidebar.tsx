@@ -1,12 +1,9 @@
 import type { HealthResponse, IterationStatus } from "../api/types";
-import { SCENARIO_LABELS } from "../data/demoData";
-import type { ScenarioId } from "../api/types";
 
 interface Props {
   health: HealthResponse | null;
-  scenario: ScenarioId;
-  onScenarioChange: (s: ScenarioId) => void;
   iteration: IterationStatus | null;
+  pendingApprovals?: number | null;
   demoMode: boolean;
   onDemoToggle: (b: boolean) => void;
   open?: boolean;
@@ -15,9 +12,8 @@ interface Props {
 
 export default function Sidebar({
   health,
-  scenario,
-  onScenarioChange,
   iteration,
+  pendingApprovals,
   demoMode,
   onDemoToggle,
   open = false,
@@ -42,34 +38,19 @@ export default function Sidebar({
       </div>
 
       <div className="sidebar-divider" />
-      <div className="sidebar-section-title">场景配置</div>
-      <label className="scada-label" htmlFor="scenario-select">
-        监管场景
-      </label>
-      <select
-        id="scenario-select"
-        className="scada-select"
-        value={scenario}
-        onChange={(e) => onScenarioChange(e.target.value as ScenarioId)}
-      >
-        {(Object.keys(SCENARIO_LABELS) as ScenarioId[]).map((s) => (
-          <option key={s} value={s}>
-            {SCENARIO_LABELS[s]}
-          </option>
-        ))}
-      </select>
-
-      <div className="sidebar-divider" />
       <div className="sidebar-section-title">系统状态</div>
       {iteration ? (
         <>
           <div className="sidebar-state-text">
             {iteration.current_state_cn || iteration.current_state || "未知"}
           </div>
-          {iteration.pending_approvals &&
-          iteration.pending_approvals.length > 0 ? (
+          {(pendingApprovals ?? 0) > 0 ? (
             <div className="sidebar-hint warn">
-              待审批: {iteration.pending_approvals.length} 项
+              待审批: {pendingApprovals} 项（含决策审批）
+            </div>
+          ) : iteration.pending_approvals && iteration.pending_approvals.length > 0 ? (
+            <div className="sidebar-hint warn">
+              模型迭代待审批: {iteration.pending_approvals.length} 项
             </div>
           ) : (
             <div className="sidebar-hint">无待审批事项</div>

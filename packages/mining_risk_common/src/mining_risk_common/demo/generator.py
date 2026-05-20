@@ -74,7 +74,68 @@ SCENARIO_CONFIG: Dict[str, Dict[str, Any]] = {
     },
 }
 
-# CSV 列顺序：通用字段 + 场景字段
+# CSV 列顺序：与 config.yaml 训练特征对齐的中文列（通用监管字段 + 场景扩展）
+REGULATORY_COLUMNS: List[str] = [
+    "报告时间",
+    "数据来源",
+    "是否规上企业",
+    "是否投保",
+    "是否履行三同时手续",
+    "厂中厂",
+    "有风险项",
+    "爆炸性粉尘企业",
+    "氨制冷企业",
+    "有限空间企业",
+    "重大危险源",
+    "金属冶炼企业",
+    "燃气企业",
+    "有限空间作业企业",
+    "危化品企业",
+    "风险重点企业",
+    "关键风险企业",
+    "数据有效标识",
+    "危化品企业标识",
+    "危险化学品使用",
+    "有限空间关键企业",
+    "最近风险报告ID",
+    "安全管理人员数量",
+    "部门安全管理人员数量",
+    "专职安全管理人持证员数",
+    "兼职安全管理人持证员数",
+    "特种作业持证人数",
+    "投保金额",
+    "工伤保险支出（万元）",
+    "投保人数",
+    "上一年人员流动率",
+    "总风险数",
+    "A级风险数",
+    "B级风险数",
+    "C级风险数",
+    "D级风险数",
+    "曾发事故的风险数",
+    "检查总次数",
+    "检查发现问题次数",
+    "隐患总数",
+    "一般隐患数",
+    "重大隐患数",
+    "未整改隐患数",
+    "文书总数",
+    "立案文书数",
+    "检查文书数",
+    "处罚金额",
+    "干式除尘系统数量",
+    "除尘作业次数",
+    "转炉数量",
+    "电炉数量",
+    "生产状态",
+    "经营状态",
+    "国民经济门类",
+    "国民经济中类",
+    "国民经济小类",
+    "经度",
+    "纬度",
+]
+
 COMMON_COLUMNS: List[str] = [
     "场景",
     "企业ID",
@@ -96,6 +157,7 @@ COMMON_COLUMNS: List[str] = [
     "企业规模",
     "行业监管大类",
     "国民经济大类",
+    *REGULATORY_COLUMNS,
 ]
 
 SCENARIO_EXTRA_COLUMNS: Dict[str, List[str]] = {
@@ -118,6 +180,131 @@ SCENARIO_EXTRA_COLUMNS: Dict[str, List[str]] = {
 
 SAFETY_LEVEL_BY_RISK: Dict[int, str] = {1: "A级", 2: "B级", 3: "C级", 4: "D级"}
 SCALE_BY_RISK: Dict[int, str] = {1: "大型", 2: "中型", 3: "中型", 4: "小型"}
+
+
+def _regulatory_profile(
+    scenario_id: str,
+    risk_level: int,
+    staff: int,
+    full_time_safety: int,
+    hazard: int,
+    accident: int,
+    rng: random.Random,
+) -> Dict[str, Any]:
+    """按风险等级生成与训练特征对齐的监管侧字段（中文列名）。"""
+    check_total = rng.randint(12, 36) if risk_level == 1 else rng.randint(14, 35)
+    check_trouble = 0 if risk_level == 1 else rng.randint(1, 8)
+    trouble_total = 0 if risk_level == 1 else check_trouble + rng.randint(0, 3)
+    trouble_major = 0 if risk_level <= 2 else rng.randint(0, 2)
+    trouble_unrectified = 0 if risk_level <= 2 else rng.randint(0, trouble_major + 1)
+
+    if risk_level == 1:
+        risk_total, a_cnt, b_cnt, c_cnt, d_cnt = 0, 0, 0, 0, 0
+        risk_with_accident = 0
+        penalty = 0.0
+        writ_case = 0
+    elif risk_level == 2:
+        d_cnt = rng.randint(1, 2)
+        risk_total = d_cnt + rng.randint(0, 1)
+        a_cnt, b_cnt, c_cnt = 0, 0, 0
+        risk_with_accident = 0
+        penalty = 0.0
+        writ_case = 0
+    elif risk_level == 3:
+        c_cnt = rng.randint(1, 2)
+        d_cnt = rng.randint(0, 1)
+        risk_total = c_cnt + d_cnt + rng.randint(0, 1)
+        a_cnt, b_cnt = 0, 0
+        risk_with_accident = 1 if rng.random() > 0.6 else 0
+        penalty = round(rng.uniform(5, 22), 2)
+        writ_case = rng.randint(0, 2)
+    else:
+        a_cnt = rng.randint(1, 3)
+        b_cnt = rng.randint(0, 2)
+        c_cnt = rng.randint(0, 2)
+        d_cnt = rng.randint(1, 2)
+        risk_total = a_cnt + b_cnt + c_cnt + d_cnt
+        risk_with_accident = 1 if accident else rng.randint(0, 1)
+        penalty = round(rng.uniform(2, 32), 2)
+        writ_case = rng.randint(0, 2)
+
+    writ_total = rng.randint(2, 10) if risk_level >= 3 else rng.randint(1, 5)
+    writ_check = max(0, writ_total - writ_case)
+    insure_num = max(1, int(staff * rng.uniform(0.55, 0.95)))
+
+    profile: Dict[str, Any] = {
+        "报告时间": f"2026-{rng.randint(4, 5):02d}-{rng.randint(8, 28):02d}",
+        "数据来源": "演示CSV",
+        "是否规上企业": 1 if risk_level <= 2 or rng.random() > 0.25 else 0,
+        "是否投保": 1 if risk_level <= 3 or rng.random() > 0.35 else 0,
+        "是否履行三同时手续": 1 if risk_level <= 3 or rng.random() > 0.3 else 0,
+        "厂中厂": 1 if risk_level >= 4 and rng.random() > 0.55 else 0,
+        "有风险项": hazard,
+        "爆炸性粉尘企业": 1 if scenario_id == "dust" else 0,
+        "氨制冷企业": 0,
+        "有限空间企业": 0,
+        "重大危险源": 0 if risk_level <= 2 else rng.randint(0, 1),
+        "金属冶炼企业": 1 if scenario_id == "metallurgy" else 0,
+        "燃气企业": 0,
+        "有限空间作业企业": 0,
+        "危化品企业": 1 if scenario_id == "chemical" else 0,
+        "风险重点企业": 1 if risk_level >= 3 else 0,
+        "关键风险企业": 1 if risk_level >= 4 else 0,
+        "数据有效标识": 1,
+        "危化品企业标识": 1 if scenario_id == "chemical" else 0,
+        "危险化学品使用": 1 if scenario_id == "chemical" and risk_level >= 3 else 0,
+        "有限空间关键企业": 0,
+        "最近风险报告ID": f"RPT-{rng.randint(100000, 999999)}",
+        "安全管理人员数量": full_time_safety + max(0, full_time_safety // 2),
+        "部门安全管理人员数量": max(1, full_time_safety // 2),
+        "专职安全管理人持证员数": full_time_safety,
+        "兼职安全管理人持证员数": max(0, full_time_safety // 2),
+        "特种作业持证人数": max(1, int(staff * rng.uniform(0.02, 0.08))),
+        "投保金额": round(rng.uniform(80, 2800), 2) if risk_level <= 2 else round(rng.uniform(0, 500), 2),
+        "工伤保险支出（万元）": round(rng.uniform(10, 80), 2),
+        "投保人数": insure_num,
+        "上一年人员流动率": round(rng.uniform(0.04, 0.12) if risk_level <= 2 else rng.uniform(0.09, 0.25), 3),
+        "总风险数": risk_total,
+        "A级风险数": a_cnt,
+        "B级风险数": b_cnt,
+        "C级风险数": c_cnt,
+        "D级风险数": d_cnt,
+        "曾发事故的风险数": risk_with_accident,
+        "检查总次数": check_total,
+        "检查发现问题次数": check_trouble,
+        "隐患总数": trouble_total,
+        "一般隐患数": trouble_total,
+        "重大隐患数": trouble_major,
+        "未整改隐患数": trouble_unrectified,
+        "文书总数": writ_total,
+        "立案文书数": writ_case,
+        "检查文书数": writ_check,
+        "处罚金额": penalty,
+        "干式除尘系统数量": rng.randint(0, 2) if scenario_id == "dust" else 0,
+        "除尘作业次数": rng.randint(20, 120) if scenario_id == "dust" else 0,
+        "转炉数量": 0,
+        "电炉数量": 0,
+        "生产状态": "正常生产" if risk_level <= 2 else "限产运行",
+        "经营状态": "正常",
+        "国民经济门类": "制造业",
+        "国民经济中类": (
+            "化学原料和化学制品制造业"
+            if scenario_id == "chemical"
+            else "黑色金属冶炼和压延加工业"
+            if scenario_id == "metallurgy"
+            else "金属制品业"
+        ),
+        "国民经济小类": (
+            "专用化学产品制造"
+            if scenario_id == "chemical"
+            else "炼铁"
+            if scenario_id == "metallurgy"
+            else "金属结构制造"
+        ),
+        "经度": round(rng.uniform(120.5, 121.5), 6),
+        "纬度": round(rng.uniform(31.0, 32.0), 6),
+    }
+    return profile
 
 
 def _scale_numeric(base: float, risk_level: int, spread: float, rng: random.Random) -> float:
@@ -165,6 +352,17 @@ def _build_enterprise(
         "行业监管大类": cfg["行业监管大类"],
         "国民经济大类": cfg["国民经济大类"],
     }
+    row.update(
+        _regulatory_profile(
+            scenario_id,
+            risk_level,
+            staff,
+            full_time_safety,
+            hazard,
+            accident,
+            rng,
+        )
+    )
 
     if scenario_id == "chemical":
         row.update(
@@ -176,15 +374,19 @@ def _build_enterprise(
             }
         )
     elif scenario_id == "metallurgy":
+        blast_volume = rng.choice([800, 1200, 2000, 3200])
         row.update(
             {
-                "高炉容积_m3": rng.choice([800, 1200, 2000, 3200]),
+                "高炉容积_m3": blast_volume,
+                "高炉数量": 1 if blast_volume > 0 else 0,
                 "煤气柜容量_万m3": rng.randint(5, 20),
                 "铁水包在线数量": rng.randint(2, 12),
                 "炉壳温度测点完好率": _scale_numeric(0.9, risk_level, 0.05, rng),
                 "煤气报警器覆盖率": _scale_numeric(0.93, risk_level, 0.04, rng),
             }
         )
+        row["转炉数量"] = rng.randint(0, 2)
+        row["电炉数量"] = rng.randint(0, 2)
     else:
         row.update(
             {

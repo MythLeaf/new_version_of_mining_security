@@ -138,6 +138,61 @@ class BatchDecisionItem(BaseModel):
   error: Optional[str] = None
 
 
+class DecisionRecordSummary(BaseModel):
+  """历史决策列表摘要。"""
+
+  record_id: str
+  enterprise_id: str
+  enterprise_name: str = ""
+  scenario_id: str = ""
+  predicted_level: str = ""
+  final_status: str = ""
+  review_status: Optional[str] = None
+  mock: bool = False
+  source: str = ""
+  job_id: Optional[str] = None
+  created_at: str = ""
+  display_path: str = ""
+  path: str = ""
+  approval_status: Optional[str] = None
+  bytes: int = 0
+
+
+class DecisionRecordListResponse(BaseModel):
+  """历史决策列表响应。"""
+
+  total: int
+  items: List[DecisionRecordSummary] = Field(default_factory=list)
+  offset: int = 0
+  limit: int = 50
+
+
+class DecisionRecordDetail(BaseModel):
+  """历史决策完整记录。"""
+
+  record_id: str
+  display_path: str = ""
+  created_at: Optional[str] = None
+  source: Optional[str] = None
+  job_id: Optional[str] = None
+  row_index: Optional[int] = None
+  mock: bool = False
+  request: Dict[str, Any] = Field(default_factory=dict)
+  response: Dict[str, Any] = Field(default_factory=dict)
+  memory_results: Optional[List[Dict[str, Any]]] = None
+  approval: Optional[Dict[str, Any]] = None
+  final_state_summary: Optional[Dict[str, Any]] = None
+
+
+class DecisionApprovalSyncResponse(BaseModel):
+  """从磁盘同步待审批决策的响应。"""
+
+  scanned: int
+  created: int
+  skipped: int
+  removed: int = 0
+
+
 class BatchJobStatus(BaseModel):
   """批量完整决策任务状态。"""
 

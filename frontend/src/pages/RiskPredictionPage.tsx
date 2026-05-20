@@ -1,20 +1,30 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  createDecisionBatch,
-  downloadDecisionBatch,
-  fetchDecisionBatchStatus,
+  decideApproval,
+  fetchApprovals,
+  fetchDecisionRecords,
   postDecision,
   streamDecision,
+  syncDecisionApprovalsFromDisk,
   uploadDataFile,
 } from "../api/client";
-import type { BatchJobStatus, DecisionResponse, NodeStatus, ScenarioId } from "../api/types";
+import type {
+  DecisionRecordSummary,
+  DecisionResponse,
+  NodeStatus,
+  ScenarioId,
+} from "../api/types";
+import { formatFinalStatus } from "../utils/decisionStatus";
 import {
   SCENARIO_NAMES,
   generateMockDecision,
   getDemoDataJson,
 } from "../data/demoData";
 import ScadaCard from "../components/ScadaCard";
+import BatchDecisionPanel from "../components/BatchDecisionPanel";
+import { useDecisionBatch } from "../context/DecisionBatchContext";
 import { ProbabilityChart, ShapChart } from "../components/charts";
+import { formatFeatureLabel } from "../lib/featureLabels";
 import JsonView from "../components/JsonView";
 import ReactECharts from "echarts-for-react";
 
@@ -91,10 +101,13 @@ function resolveCompositeRisk(decision: DecisionResponse): CompositeRiskDisplay 
 
 type MockSource = "backend" | "frontend" | null;
 
+const DecisionDetailModal = lazy(() => import("../components/DecisionDetailModal"));
+
 export default function RiskPredictionPage({ scenario }: Props) {
   const [enterpriseId, setEnterpriseId] = useState("ENT-DEMO-001");
   const [dataText, setDataText] = useState(() => getDemoDataJson(scenario));
   const [uploadInfo, setUploadInfo] = useState<string>("");
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [uploadedRow, setUploadedRow] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -102,9 +115,13 @@ export default function RiskPredictionPage({ scenario }: Props) {
   const [streamLog, setStreamLog] = useState<NodeStatus[]>([]);
   const [useStream, setUseStream] = useState(true);
   const [mockSource, setMockSource] = useState<MockSource>(null);
-  const [batchLoading, setBatchLoading] = useState(false);
-  const [batchInfo, setBatchInfo] = useState("");
-  const [batchStatus, setBatchStatus] = useState<BatchJobStatus | null>(null);
+  const { batchLoading, batchInfo, batchStatus, startBatch, cancelBatch, clearBatch } =
+    useDecisionBatch();
+  const batchFinished =
+    batchStatus?.status === "completed" ||
+    batchStatus?.status === "completed_with_errors" ||
+    batchStatus?.status === "cancelled";
+  const batchCancelling = batchStatus?.status === "cancelling";
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -116,58 +133,50 @@ export default function RiskPredictionPage({ scenario }: Props) {
     const resp = await uploadDataFile(file, enterpriseId);
     if (!resp || !resp.success) {
       setUploadInfo(`上传失败: ${resp?.message ?? "后端无响应"}`);
+      setUploadedFile(null);
       setUploadedRow(null);
       return;
     }
-    setUploadInfo(`已加载 ${resp.rows} 行 × ${resp.columns} 列`);
+    setUploadedFile(file);
+    const batchHint =
+      resp.rows > 1
+        ? `；共 ${resp.rows} 行，可在下方启动批量完整决策`
+        : "";
+    setUploadInfo(
+      `已加载 ${resp.rows} 行 × ${resp.columns} 列（执行预测将仅使用文件首行，不再合并下方 JSON${batchHint}）`,
+    );
     if (resp.preview && resp.preview.length > 0) {
-      setUploadedRow(resp.preview[0]);
+      const row = resp.preview[0];
+      setUploadedRow(row);
+      const ent =
+        (row["企业ID"] as string) ||
+        (row["enterprise_id"] as string) ||
+        (row["enterpriseId"] as string);
+      if (ent) setEnterpriseId(String(ent));
     } else {
       setUploadedRow(null);
     }
   }
 
-  async function handleBatchUpload(file: File) {
-    setBatchLoading(true);
-    setBatchInfo(`正在创建批量完整决策任务：${file.name}`);
-    setBatchStatus(null);
-    const resp = await createDecisionBatch(file, scenario);
-    if (!resp?.success) {
-      setBatchInfo("批量任务创建失败，请确认后端服务与管理员令牌配置。");
-      setBatchLoading(false);
-      return;
-    }
-    setBatchInfo(resp.message);
-    const firstStatus = await fetchDecisionBatchStatus(resp.job_id);
-    setBatchStatus(firstStatus);
+  function handleTerminatePredict() {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setLoading(false);
+    setError(null);
   }
-
-  useEffect(() => {
-    if (!batchStatus?.job_id) return;
-    if (batchStatus.status === "completed" || batchStatus.status === "completed_with_errors") {
-      setBatchLoading(false);
-      return;
-    }
-    const timer = window.setInterval(async () => {
-      const next = await fetchDecisionBatchStatus(batchStatus.job_id);
-      if (next) setBatchStatus(next);
-    }, 1500);
-    return () => window.clearInterval(timer);
-  }, [batchStatus?.job_id, batchStatus?.status]);
 
   async function handlePredict() {
     setError(null);
     let payload: Record<string, unknown>;
-    try {
-      payload = JSON.parse(dataText);
-    } catch {
-      setError("JSON 格式错误，请检查输入");
-      return;
-    }
     if (uploadedRow) {
-      Object.entries(uploadedRow).forEach(([k, v]) => {
-        if (v !== null && v !== undefined) payload[k] = v;
-      });
+      payload = { ...uploadedRow };
+    } else {
+      try {
+        payload = JSON.parse(dataText);
+      } catch {
+        setError("JSON 格式错误，请检查输入");
+        return;
+      }
     }
     payload.scenario_id = scenario;
 
@@ -176,11 +185,12 @@ export default function RiskPredictionPage({ scenario }: Props) {
     setDecision(null);
     setMockSource(null);
 
+    abortRef.current?.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+
     let result: DecisionResponse | null = null;
     if (useStream) {
-      abortRef.current?.abort();
-      const ctrl = new AbortController();
-      abortRef.current = ctrl;
       try {
         result = await streamDecision(
           enterpriseId,
@@ -190,13 +200,24 @@ export default function RiskPredictionPage({ scenario }: Props) {
           scenario,
         );
       } catch (e) {
-        // SSE 失败回退到普通请求
+        if (ctrl.signal.aborted) {
+          setLoading(false);
+          return;
+        }
         console.warn("SSE 失败，回退至普通请求", e);
       }
     }
 
     if (!result) {
-      result = await postDecision(enterpriseId, payload, scenario);
+      if (ctrl.signal.aborted) {
+        setLoading(false);
+        return;
+      }
+      result = await postDecision(enterpriseId, payload, scenario, ctrl.signal);
+    }
+    if (ctrl.signal.aborted) {
+      setLoading(false);
+      return;
     }
     if (result) {
       setDecision(result);
@@ -234,7 +255,12 @@ export default function RiskPredictionPage({ scenario }: Props) {
           <button
             className="scada-btn secondary"
             type="button"
-            onClick={() => setDataText(getDemoDataJson(scenario))}
+            onClick={() => {
+              setDataText(getDemoDataJson(scenario));
+              setUploadedFile(null);
+              setUploadedRow(null);
+              setUploadInfo("");
+            }}
             style={{ marginBottom: 10 }}
           >
             🎲 模拟数据填充
@@ -245,11 +271,33 @@ export default function RiskPredictionPage({ scenario }: Props) {
             className="scada-textarea"
             rows={12}
             value={dataText}
-            onChange={(e) => setDataText(e.target.value)}
+            onChange={(e) => {
+              setDataText(e.target.value);
+              if (uploadedRow) setUploadedRow(null);
+            }}
+            disabled={!!uploadedRow}
+            style={uploadedRow ? { opacity: 0.5 } : undefined}
           />
+          {uploadedRow && (
+            <div style={{ fontSize: 11, color: "#f59e0b", marginTop: 4 }}>
+              已加载上传文件，预测仅使用文件首行。
+              <button
+                type="button"
+                className="scada-btn secondary"
+                style={{ marginLeft: 8, fontSize: 10, padding: "2px 8px" }}
+                onClick={() => {
+                  setUploadedFile(null);
+                  setUploadedRow(null);
+                  setUploadInfo("");
+                }}
+              >
+                改用手动 JSON
+              </button>
+            </div>
+          )}
 
           <label className="scada-label" style={{ marginTop: 8 }}>
-            或上传 CSV/Excel
+            上传 CSV/Excel
           </label>
           <input
             type="file"
@@ -257,6 +305,7 @@ export default function RiskPredictionPage({ scenario }: Props) {
             onChange={(e) => {
               const f = e.target.files?.[0];
               if (f) handleUpload(f);
+              e.currentTarget.value = "";
             }}
             style={{ color: "#9ca3af", fontSize: 12 }}
           />
@@ -273,32 +322,6 @@ export default function RiskPredictionPage({ scenario }: Props) {
             </div>
           )}
 
-          <div className="scada-card" style={{ marginTop: 12, padding: 12 }}>
-            <div className="scada-card-title">批量完整决策</div>
-            <div style={{ fontSize: 11, color: "#94a3b8", margin: "6px 0 8px" }}>
-              多行 CSV/Excel 会逐家企业运行完整 Agent 工作流，并将 JSON 输出到系统配置页指定的服务端目录。
-            </div>
-            <input
-              type="file"
-              accept=".csv,.xlsx,.xls"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) handleBatchUpload(f);
-                e.currentTarget.value = "";
-              }}
-              disabled={batchLoading}
-              style={{ color: "#9ca3af", fontSize: 12 }}
-            />
-            {batchInfo && (
-              <div style={{ fontSize: 11, color: "#38bdf8", marginTop: 6 }}>
-                {batchInfo}
-              </div>
-            )}
-            {batchStatus && (
-              <BatchDecisionPanel status={batchStatus} />
-            )}
-          </div>
-
           <label
             style={{
               display: "flex",
@@ -306,7 +329,7 @@ export default function RiskPredictionPage({ scenario }: Props) {
               gap: 6,
               fontSize: 12,
               color: "#9ca3af",
-              margin: "10px 0",
+              margin: "12px 0 10px",
               cursor: "pointer",
             }}
           >
@@ -318,16 +341,102 @@ export default function RiskPredictionPage({ scenario }: Props) {
             使用 SSE 实时节点流
           </label>
 
-          <button
-            className="scada-btn full-width"
-            type="button"
-            onClick={handlePredict}
-            disabled={loading}
-          >
-            {loading ? "执行中..." : "🚀 执行预测"}
-          </button>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button
+              className="scada-btn"
+              type="button"
+              onClick={handlePredict}
+              disabled={loading}
+              style={{ flex: 1, minWidth: 140 }}
+            >
+              {loading ? "执行中..." : "🚀 执行预测"}
+            </button>
+            {loading && (
+              <button
+                className="scada-btn danger"
+                type="button"
+                onClick={handleTerminatePredict}
+              >
+                终止任务
+              </button>
+            )}
+          </div>
 
           {error && <div className="alert error" style={{ marginTop: 10 }}>{error}</div>}
+
+          <div className="scada-card" style={{ marginTop: 14, padding: 12 }}>
+            <div className="scada-card-title">批量完整决策</div>
+            <div style={{ fontSize: 11, color: "#94a3b8", margin: "6px 0 8px" }}>
+              使用上方已上传的多行 CSV/Excel，逐家企业运行完整 Agent 工作流，并将 JSON 输出到系统配置页指定的服务端目录。
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button
+                className="scada-btn secondary"
+                type="button"
+                disabled={(batchLoading || batchCancelling) || !uploadedFile}
+                onClick={() => uploadedFile && startBatch(uploadedFile, scenario)}
+                style={{ flex: 1, minWidth: 160 }}
+              >
+                {batchLoading
+                  ? "批量任务运行中..."
+                  : batchCancelling
+                    ? "正在终止任务…"
+                    : "启动批量完整决策"}
+              </button>
+              {batchLoading && !batchCancelling && (
+                <button
+                  className="scada-btn danger"
+                  type="button"
+                  onClick={() => void cancelBatch()}
+                >
+                  终止任务
+                </button>
+              )}
+              {(batchFinished || batchCancelling) && batchStatus && (
+                <button
+                  className="scada-btn secondary"
+                  type="button"
+                  onClick={clearBatch}
+                >
+                  关闭
+                </button>
+              )}
+            </div>
+            {!uploadedFile && (
+              <div style={{ fontSize: 11, color: "#64748b", marginTop: 6 }}>
+                请先在上方选择 CSV/Excel 文件
+              </div>
+            )}
+            {batchInfo && (
+              <div
+                className={
+                  batchStatus?.status === "cancelled" || batchCancelling
+                    ? "alert warning"
+                    : undefined
+                }
+                style={{
+                  fontSize: 11,
+                  marginTop: 6,
+                  color:
+                    batchStatus?.status === "cancelled" || batchCancelling
+                      ? undefined
+                      : "#38bdf8",
+                }}
+              >
+                {batchInfo}
+              </div>
+            )}
+            {batchStatus && !batchFinished && (
+              <BatchDecisionPanel status={batchStatus} />
+            )}
+            {batchStatus && batchFinished && (
+              <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 8 }}>
+                任务 {batchStatus.job_id} 已结束（{batchStatus.status}）。
+                完成 {batchStatus.completed}，失败 {batchStatus.failed}，取消{" "}
+                {batchStatus.results.filter((r) => r.status === "cancelled").length}。
+              </div>
+            )}
+          </div>
         </div>
 
         {/* 右侧结果区 */}
@@ -353,71 +462,219 @@ export default function RiskPredictionPage({ scenario }: Props) {
           )}
         </div>
       </div>
+
+      <HistoryDecisionSection />
     </div>
   );
 }
 
-function BatchDecisionPanel({ status }: { status: BatchJobStatus }) {
-  const done = status.completed + status.failed;
-  const percent = status.total > 0 ? Math.round((done / status.total) * 100) : 0;
-  const recent = status.results.slice(0, 8);
+function HistoryDecisionSection() {
+  const [items, setItems] = useState<DecisionRecordSummary[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [filterStatus, setFilterStatus] = useState("");
+  const [enterpriseFilter, setEnterpriseFilter] = useState("");
+  const [detailTarget, setDetailTarget] = useState<{ recordId: string; enterpriseId?: string } | null>(null);
+  const [syncMsg, setSyncMsg] = useState("");
 
-  async function handleDownload() {
-    const blob = await downloadDecisionBatch(status.job_id);
-    if (!blob) return;
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${status.job_id}.zip`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
+  const loadRecords = useCallback(async () => {
+    setLoading(true);
+    const resp = await fetchDecisionRecords({
+      final_status: filterStatus || undefined,
+      enterprise_id: enterpriseFilter.trim() || undefined,
+      limit: 50,
+      offset: 0,
+    });
+    if (resp) {
+      setItems(resp.items || []);
+      setTotal(resp.total);
+    }
+    setLoading(false);
+  }, [filterStatus, enterpriseFilter]);
+
+  useEffect(() => {
+    loadRecords();
+  }, [loadRecords]);
+
+  const handleQuickDecide = useCallback(
+    async (record: DecisionRecordSummary, decision: "approved" | "rejected") => {
+      let approvals = await fetchApprovals({ status: "pending", limit: 200 });
+      let match = approvals?.items?.find(
+        (a) =>
+          a.type === "decision_review" &&
+          (a.decision_path?.includes(record.record_id) ||
+            a.decision_display_path?.includes(record.record_id)),
+      );
+      if (!match) {
+        await syncDecisionApprovalsFromDisk();
+        approvals = await fetchApprovals({ status: "pending", limit: 200 });
+        match = approvals?.items?.find(
+          (a) =>
+            a.type === "decision_review" &&
+            (a.decision_path?.includes(record.record_id) ||
+              a.decision_display_path?.includes(record.record_id)),
+        );
+      }
+      if (!match) {
+        setSyncMsg("未找到对应审批项，请先在「审批管理」中从磁盘同步。");
+        return;
+      }
+      await decideApproval(match.id, decision, "admin", decision === "approved" ? "历史决策批准" : "历史决策驳回");
+      setSyncMsg("");
+      loadRecords();
+    },
+    [loadRecords],
+  );
 
   return (
-    <div style={{ marginTop: 10 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#94a3b8" }}>
-        <span>任务 {status.job_id}</span>
-        <span>{percent}%</span>
+    <div className="scada-card" style={{ marginTop: 20 }}>
+      <div className="risk-report-header">
+        <div className="risk-report-title">📁 历史决策记录</div>
+        <button className="scada-btn secondary" type="button" onClick={loadRecords} disabled={loading}>
+          🔄 刷新
+        </button>
       </div>
-      <div style={{ height: 6, background: "#1e293b", borderRadius: 999, overflow: "hidden", margin: "6px 0" }}>
-        <div style={{ width: `${percent}%`, height: "100%", background: "#38bdf8" }} />
+      <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+        <input
+          className="scada-input"
+          placeholder="企业 ID 筛选"
+          value={enterpriseFilter}
+          onChange={(e) => setEnterpriseFilter(e.target.value)}
+          style={{ width: 160 }}
+        />
+        <select
+          className="scada-input"
+          value={filterStatus}
+          onChange={(e) => setFilterStatus(e.target.value)}
+          style={{ width: 140 }}
+        >
+          <option value="">全部状态</option>
+          <option value="HUMAN_REVIEW">待人工审批</option>
+          <option value="APPROVE">已通过</option>
+          <option value="REJECT">已驳回</option>
+        </select>
+        <button className="scada-btn secondary" type="button" onClick={loadRecords}>
+          筛选
+        </button>
       </div>
-      <div style={{ fontSize: 11, color: "#94a3b8" }}>
-        状态 {status.status}，完成 {status.completed}，失败 {status.failed}，运行中 {status.running}，总数 {status.total}
-      </div>
-      {status.manifest_path && (
-        <div className="font-mono" style={{ fontSize: 10, color: "#94a3b8", marginTop: 4 }}>
-          manifest: {status.manifest_path}
+      {syncMsg && (
+        <div className="alert info" style={{ marginTop: 10 }}>
+          {syncMsg}
         </div>
       )}
-      {recent.length > 0 && (
-        <table className="scada-table" style={{ marginTop: 8, fontSize: 11 }}>
+      <div style={{ fontSize: 11, color: "#94a3b8", margin: "10px 0" }}>
+        共 {total} 条（含批量任务子目录）
+      </div>
+      {loading ? (
+        <div style={{ padding: 20, textAlign: "center", color: "#94a3b8" }}>加载中...</div>
+      ) : items.length === 0 ? (
+        <div className="empty-state">暂无历史决策 JSON</div>
+      ) : (
+        <table className="scada-table" style={{ fontSize: 12 }}>
           <thead>
             <tr>
+              <th>时间</th>
               <th>企业</th>
-              <th>状态</th>
+              <th>场景</th>
               <th>等级</th>
-              <th>输出</th>
+              <th>状态</th>
+              <th>来源</th>
+              <th>Mock</th>
+              <th>审批</th>
+              <th>操作</th>
             </tr>
           </thead>
           <tbody>
-            {recent.map((item) => (
-              <tr key={`${item.row_index}-${item.enterprise_id}`}>
-                <td>{item.enterprise_id}</td>
-                <td>{item.status}</td>
-                <td>{item.risk_level || "-"}</td>
-                <td className="font-mono" style={{ maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis" }}>
-                  {item.output_path || item.error || "-"}
+            {items.map((row) => (
+              <tr key={row.record_id}>
+                <td style={{ fontSize: 11, color: "#94a3b8" }}>{row.created_at}</td>
+                <td>
+                  <div>{row.enterprise_name || row.enterprise_id}</div>
+                  <div className="font-mono" style={{ fontSize: 10, color: "#64748b" }}>
+                    {row.enterprise_id}
+                  </div>
+                </td>
+                <td>{row.scenario_id}</td>
+                <td>{row.predicted_level}</td>
+                <td>
+                  <span
+                    className="tag"
+                    style={{
+                      background:
+                        row.final_status === "HUMAN_REVIEW"
+                          ? "rgba(245,158,11,0.15)"
+                          : row.final_status === "REJECT"
+                            ? "rgba(239,68,68,0.15)"
+                            : "rgba(16,185,129,0.15)",
+                      color:
+                        row.final_status === "HUMAN_REVIEW"
+                          ? "#f59e0b"
+                          : row.final_status === "REJECT"
+                            ? "#ef4444"
+                            : "#10b981",
+                    }}
+                  >
+                    {formatFinalStatus(row.final_status)}
+                  </span>
+                </td>
+                <td>{row.source || "—"}</td>
+                <td>{row.mock ? "是" : "否"}</td>
+                <td>
+                  {row.approval_status === "approved"
+                    ? "已批准"
+                    : row.approval_status === "rejected"
+                      ? "已驳回"
+                      : row.final_status === "HUMAN_REVIEW"
+                        ? "待审批"
+                        : "—"}
+                </td>
+                <td>
+                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                    <button
+                      className="scada-btn secondary"
+                      type="button"
+                      style={{ fontSize: 10, padding: "2px 8px" }}
+                      onClick={() =>
+                        setDetailTarget({ recordId: row.record_id, enterpriseId: row.enterprise_id })
+                      }
+                    >
+                      详情
+                    </button>
+                    {row.final_status === "HUMAN_REVIEW" && !row.approval_status && (
+                      <>
+                        <button
+                          className="scada-btn"
+                          type="button"
+                          style={{ fontSize: 10, padding: "2px 8px", background: "#10b981" }}
+                          onClick={() => handleQuickDecide(row, "approved")}
+                        >
+                          批准
+                        </button>
+                        <button
+                          className="scada-btn"
+                          type="button"
+                          style={{ fontSize: 10, padding: "2px 8px", background: "#ef4444" }}
+                          onClick={() => handleQuickDecide(row, "rejected")}
+                        >
+                          驳回
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
-      {(status.status === "completed" || status.status === "completed_with_errors") && (
-        <button className="scada-btn secondary" type="button" onClick={handleDownload} style={{ marginTop: 8 }}>
-          下载批量结果 ZIP
-        </button>
+      {detailTarget && (
+        <Suspense fallback={null}>
+          <DecisionDetailModal
+            recordId={detailTarget.recordId}
+            enterpriseId={detailTarget.enterpriseId}
+            onClose={() => setDetailTarget(null)}
+          />
+        </Suspense>
       )}
     </div>
   );
@@ -455,7 +712,7 @@ interface DecisionProps {
   mockSource?: MockSource;
 }
 
-function DecisionView({ decision, streamLog, mockSource }: DecisionProps) {
+export function DecisionView({ decision, streamLog, mockSource }: DecisionProps) {
   const level = decision.predicted_level || "未知";
   const hex = LEVEL_HEX[level] ?? "#6b7280";
   const glow = LEVEL_GLOW[level] ?? "glow-white";
@@ -517,10 +774,16 @@ function DecisionView({ decision, streamLog, mockSource }: DecisionProps) {
               background: hex,
             }}
           >
-            {decision.final_status}
+            {formatFinalStatus(decision.final_status || "")}
           </span>
         </div>
       </div>
+
+      {decision.final_status === "HUMAN_REVIEW" && (
+        <div className="alert info" style={{ marginBottom: 12 }}>
+          工作流判定为待人工审批。若已启用决策落盘，该记录将自动加入审批队列，可在「预警经验与记忆 → 审批管理」处理。
+        </div>
+      )}
 
       {isMock && (
         <div className="alert info">
@@ -609,7 +872,7 @@ function KpiCards({ decision }: { decision: DecisionResponse }) {
     <div className="row cols-4">
       <ScadaCard
         title="判定状态"
-        value={decision.final_status || "—"}
+        value={formatFinalStatus(decision.final_status || "") || "—"}
         glowClass="glow-blue"
       />
       <ScadaCard
@@ -933,10 +1196,12 @@ function RiskScorePanel({ decision }: { decision: DecisionResponse }) {
   }), [severity, relevance, irreversibility]);
 
   const shapFactors = (decision.shap_contributions || []).map((s) => ({
-    name: s.feature,
+    name: formatFeatureLabel(s.feature),
     value: Math.abs(s.contribution),
     color: s.contribution >= 0 ? "#ef4444" : "#10b981",
   }));
+  const topShapFactors = shapFactors.slice(0, 5);
+  const maxShapValue = Math.max(...topShapFactors.map((f) => f.value), 1e-9);
 
   return (
     <div style={{ marginTop: 16 }}>
@@ -998,14 +1263,14 @@ function RiskScorePanel({ decision }: { decision: DecisionResponse }) {
           <div className="risk-report-title" style={{ marginBottom: 12 }}>
             风险因子贡献度
           </div>
-          {shapFactors.slice(0, 5).map((factor, idx) => (
+          {topShapFactors.map((factor, idx) => (
             <div key={idx} className="risk-factor-item">
               <div className="risk-factor-name">{factor.name}</div>
               <div className="risk-factor-bar">
                 <div
                   className="risk-factor-fill"
                   style={{
-                    width: `${Math.min(factor.value * 200, 100)}%`,
+                    width: `${(factor.value / maxShapValue) * 100}%`,
                     background: factor.color,
                   }}
                 />

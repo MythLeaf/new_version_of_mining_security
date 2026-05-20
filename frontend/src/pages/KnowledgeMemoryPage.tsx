@@ -8,17 +8,18 @@ import {
   fetchMemoryStats,
   fetchWarningExperiences,
   fetchEnterpriseRiskHistory,
-  fetchApprovals,
-  decideApproval,
   fetchAuditLogs,
   exportMemoryData,
   queryShortTermMemoryPaginated,
   queryLongTermMemoryPaginated,
   migrateToLongTerm,
   deleteShortTermMemory,
+  deleteLongTermMemory,
+  deleteEnterpriseDataBySource,
 } from "../api/client";
 import ReactECharts from "echarts-for-react";
 import SubTabs from "../components/SubTabs";
+import DecisionApprovalSection from "../components/DecisionApprovalSection";
 
 const PRIO_COLORS: Record<string, string> = { P0: "#ef4444", P1: "#f97316", P2: "#3b82f6", P3: "#10b981" };
 const PRIO_BG: Record<string, string> = { P0: "rgba(239,68,68,0.15)", P1: "rgba(249,115,22,0.15)", P2: "rgba(59,130,246,0.15)", P3: "rgba(16,185,129,0.15)" };
@@ -241,21 +242,29 @@ function OverviewDashboard() {
     const st = memStats?.short_term || {};
     const lt = memStats?.long_term || {};
     const we = memStats?.warning_experiences || {};
-    const maxVal = Math.max(st.total || 1, lt.total || 1, we.total || 1, 1);
+    const dimNames = ["总量规模", "分类多样性", "企业覆盖", "P0紧急度", "时间跨度(天)"];
+    const rawBySeries = [
+      { name: "短期记忆", raw: [st.total || 0, Object.keys(st.by_category || {}).length, Object.keys(st.by_enterprise || {}).length, st.by_priority?.P0 || 0, Object.keys(st.timeline || {}).length], lineStyle: { color: "#3b82f6", width: 2 }, areaStyle: { color: "rgba(59,130,246,0.15)" }, itemStyle: { color: "#3b82f6" } },
+      { name: "长期记忆", raw: [lt.total || 0, Object.keys(lt.by_category || {}).length, Object.keys(lt.by_enterprise || {}).length, lt.by_priority?.P0 || 0, Object.keys(lt.timeline || {}).length], lineStyle: { color: "#10b981", width: 2 }, areaStyle: { color: "rgba(16,185,129,0.15)" }, itemStyle: { color: "#10b981" } },
+      { name: "预警经验", raw: [we.total || 0, Object.keys(we.by_scenario || {}).length, 0, we.by_level?.["红"] || 0, Object.keys(we.timeline || {}).length], lineStyle: { color: "#8b5cf6", width: 2 }, areaStyle: { color: "rgba(139,92,246,0.15)" }, itemStyle: { color: "#8b5cf6" } },
+    ];
+    const dimMax = dimNames.map((_, i) => Math.max(...rawBySeries.map((s) => s.raw[i]), 1));
     return {
       backgroundColor: "transparent",
-      tooltip: {},
+      tooltip: {
+        trigger: "item" as const,
+        formatter: (params: { name?: string; data?: { rawValues?: number[] } }) => {
+          const raw = params.data?.rawValues;
+          if (!raw) return "";
+          const lines = dimNames.map((d, i) => `${d}: ${raw[i]}`);
+          return `<b>${params.name ?? ""}</b><br/>${lines.join("<br/>")}`;
+        },
+      },
       legend: { data: ["短期记忆", "长期记忆", "预警经验"], bottom: 0, textStyle: { color: "#94a3b8", fontSize: 10 } },
       radar: {
         center: ["50%", "45%"],
         radius: "60%",
-        indicator: [
-          { name: "总量规模", max: maxVal },
-          { name: "分类多样性", max: 10 },
-          { name: "企业覆盖", max: Math.max(Object.keys(st.by_enterprise || {}).length || 1, Object.keys(lt.by_enterprise || {}).length || 1, 1) },
-          { name: "P0紧急度", max: Math.max(st.by_priority?.P0 || 1, lt.by_priority?.P0 || 1, 1) },
-          { name: "时间跨度(天)", max: Math.max(Object.keys(st.timeline || {}).length || 1, Object.keys(lt.timeline || {}).length || 1, Object.keys(we.timeline || {}).length || 1, 1) },
-        ],
+        indicator: dimNames.map((name) => ({ name, max: 100 })),
         axisName: { color: "#94a3b8", fontSize: 10 },
         splitArea: { areaStyle: { color: ["rgba(59,130,246,0.02)", "rgba(59,130,246,0.02)"] } },
         splitLine: { lineStyle: { color: "#1e293b" } },
@@ -263,11 +272,14 @@ function OverviewDashboard() {
       },
       series: [{
         type: "radar",
-        data: [
-          { value: [st.total || 0, Object.keys(st.by_category || {}).length, Object.keys(st.by_enterprise || {}).length, st.by_priority?.P0 || 0, Object.keys(st.timeline || {}).length], name: "短期记忆", lineStyle: { color: "#3b82f6", width: 2 }, areaStyle: { color: "rgba(59,130,246,0.15)" }, itemStyle: { color: "#3b82f6" } },
-          { value: [lt.total || 0, Object.keys(lt.by_category || {}).length, Object.keys(lt.by_enterprise || {}).length, lt.by_priority?.P0 || 0, Object.keys(lt.timeline || {}).length], name: "长期记忆", lineStyle: { color: "#10b981", width: 2 }, areaStyle: { color: "rgba(16,185,129,0.15)" }, itemStyle: { color: "#10b981" } },
-          { value: [we.total || 0, Object.keys(we.by_scenario || {}).length, 0, we.by_level?.["红"] || 0, Object.keys(we.timeline || {}).length], name: "预警经验", lineStyle: { color: "#8b5cf6", width: 2 }, areaStyle: { color: "rgba(139,92,246,0.15)" }, itemStyle: { color: "#8b5cf6" } },
-        ],
+        data: rawBySeries.map((s) => ({
+          name: s.name,
+          value: s.raw.map((v, i) => (v / dimMax[i]) * 100),
+          rawValues: s.raw,
+          lineStyle: s.lineStyle,
+          areaStyle: s.areaStyle,
+          itemStyle: s.itemStyle,
+        })),
       }],
     };
   }, [memStats]);
@@ -359,7 +371,16 @@ function OverviewDashboard() {
           </div>
 
           <div className="row cols-4" style={{ marginBottom: 14 }}>
-            <StatCard value={memStats.pending_approvals ?? 0} label="待审批" color="#f59e0b" icon="📋" />
+            <StatCard
+              value={memStats.pending_approvals ?? 0}
+              label={
+                (memStats.decision_pending_reviews ?? 0) > 0
+                  ? `待审批（决策 ${memStats.decision_pending_reviews}）`
+                  : "待审批"
+              }
+              color="#f59e0b"
+              icon="📋"
+            />
             <StatCard value={memStats.iteration_count ?? 0} label="迭代次数" color="#06b6d4" icon="🔄" />
             <StatCard value={memStats.audit_log_count ?? 0} label="审计日志" color="#64748b" icon="🔍" />
             <StatCard value={memStats.warning_experiences?.financial_total ?? 0} label="财务影响(万元)" color="#ef4444" icon="💰" />
@@ -467,6 +488,17 @@ function DataManagementSection() {
 
   useEffect(() => { refreshStats(); }, [refreshStats]);
 
+  const handleDeleteSource = useCallback(async (src: string) => {
+    if (!window.confirm(`确定要删除数据源「${src}」及其全部企业数据记忆吗？此操作不可恢复。`)) return;
+    const result = await deleteEnterpriseDataBySource(src);
+    if (!result?.success) {
+      setStatus(`❌ 删除失败: ${src}`);
+      return;
+    }
+    setStatus(`✅ 已删除 ${result.deleted_count ?? 0} 条记忆条目（数据源: ${src}）`);
+    refreshStats();
+  }, [refreshStats]);
+
   return (
     <div>
       <div className="scada-card" style={{ marginBottom: 14 }}>
@@ -510,7 +542,18 @@ function DataManagementSection() {
           <div className="risk-report-title" style={{ marginBottom: 10 }}>📁 已导入数据源</div>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
             {stats.sources.map((src: string, i: number) => (
-              <span key={i} className="tag tag-cyan" style={{ fontSize: 11 }}>{src}</span>
+              <span key={i} className="tag tag-cyan" style={{ fontSize: 11, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                {src}
+                <button
+                  className="scada-btn secondary"
+                  style={{ fontSize: 9, padding: "1px 5px", color: "#ef4444" }}
+                  type="button"
+                  title={`删除数据源 ${src}`}
+                  onClick={() => handleDeleteSource(src)}
+                >
+                  🗑️
+                </button>
+              </span>
             ))}
           </div>
         </div>
@@ -767,7 +810,7 @@ function ExcelImportSection() {
     <div>
       <div className="scada-card" style={{ marginBottom: 14 }}>
         <div className="risk-report-header">
-          <div className="risk-report-title">📥 Excel文件导入与预测分析</div>
+          <div className="risk-report-title">📥 Excel/CSV 文件导入与预测分析</div>
         </div>
         <div style={{ display: "flex", gap: 12, marginTop: 12, flexWrap: "wrap" }}>
           <label className="scada-btn" style={{ cursor: "pointer" }}>
@@ -778,8 +821,8 @@ function ExcelImportSection() {
             💾 导入到长期记忆库
             <input ref={memoryFileRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: "none" }} onChange={handleImportToMemory} disabled={loading} />
           </label>
-          <button className="scada-btn secondary" type="button" onClick={() => handleExport("long", "xlsx")}>📤 导出长期记忆</button>
-          <button className="scada-btn secondary" type="button" onClick={() => handleExport("short", "csv")}>📤 导出短期记忆</button>
+          <button className="scada-btn secondary" type="button" onClick={() => handleExport("long", "xlsx")}>📤 导出长期记忆（XLSX）</button>
+          <button className="scada-btn secondary" type="button" onClick={() => handleExport("short", "csv")}>📤 导出短期记忆（CSV）</button>
         </div>
         {status && <div className={`alert ${status.includes("✅") ? "success" : status.includes("❌") ? "error" : "info"}`} style={{ marginTop: 10 }}>{status}</div>}
       </div>
@@ -1106,7 +1149,15 @@ function ShortTermMemorySection() {
   useEffect(() => { loadData(); }, [loadData]);
 
   const handleMigrate = useCallback(async (ids: string[]) => { await migrateToLongTerm(ids); loadData(); }, [loadData]);
-  const handleDelete = useCallback(async (id: string) => { await deleteShortTermMemory(id); loadData(); }, [loadData]);
+  const handleDelete = useCallback(async (id: string) => {
+    if (!window.confirm("确定要删除该条短期记忆吗？此操作不可恢复。")) return;
+    const ok = await deleteShortTermMemory(id);
+    if (!ok) {
+      window.alert("删除失败，请稍后重试");
+      return;
+    }
+    loadData();
+  }, [loadData]);
 
   const catPieOption = useMemo(() => {
     const byCat = memStats?.short_term?.by_category || {};
@@ -1313,6 +1364,16 @@ function LongTermMemorySection() {
   }, [search, filterCat, page]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  const handleDelete = useCallback(async (id: string) => {
+    if (!window.confirm("确定要删除该条长期记忆吗？此操作不可恢复。")) return;
+    const ok = await deleteLongTermMemory(id);
+    if (!ok) {
+      window.alert("删除失败，请稍后重试");
+      return;
+    }
+    loadData();
+  }, [loadData]);
 
   const catPieOption = useMemo(() => {
     const byCat = memStats?.long_term?.by_category || {};
@@ -1603,7 +1664,12 @@ function LongTermMemorySection() {
                   <td className="font-mono" style={{ fontSize: 11 }}>{item.enterprise_id || "—"}</td>
                   <td style={{ fontSize: 11, color: "#94a3b8" }}>{item.time}</td>
                   <td>{item.verified ? <span style={{ color: "#10b981" }}>✅</span> : <span style={{ color: "#64748b" }}>—</span>}</td>
-                  <td><button className="scada-btn secondary" style={{ fontSize: 10, padding: "2px 6px" }} type="button" onClick={() => setDetailItem(item)}>📋 详情</button></td>
+                  <td>
+                    <div style={{ display: "flex", gap: 4 }}>
+                      <button className="scada-btn secondary" style={{ fontSize: 10, padding: "2px 6px" }} type="button" onClick={() => setDetailItem(item)}>📋 详情</button>
+                      <button className="scada-btn secondary" style={{ fontSize: 10, padding: "2px 6px", color: "#ef4444" }} type="button" onClick={() => handleDelete(item.id)}>🗑️</button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -1623,86 +1689,7 @@ function LongTermMemorySection() {
 }
 
 function ApprovalSection() {
-  const [approvals, setApprovals] = useState<any[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [filterStatus, setFilterStatus] = useState("");
-
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    const resp = await fetchApprovals({ status: filterStatus || undefined, limit: 50 });
-    if (resp) { setApprovals(resp.items || []); setTotal(resp.total); }
-    setLoading(false);
-  }, [filterStatus]);
-
-  useEffect(() => { loadData(); }, [loadData]);
-
-  const handleDecide = useCallback(async (id: string, decision: string) => {
-    const comment = decision === "approved" ? "审批通过" : "需要进一步修改";
-    await decideApproval(id, decision, "admin", comment);
-    loadData();
-  }, [loadData]);
-
-  return (
-    <div>
-      <div className="scada-card" style={{ marginBottom: 14 }}>
-        <div className="risk-report-header">
-          <div className="risk-report-title">📋 管理员审批工作流</div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <span className="tag tag-orange">待审批: {approvals.filter((a) => a.status === "pending").length}</span>
-          </div>
-        </div>
-        <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-          <select className="scada-input" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} style={{ width: 120 }}>
-            <option value="">全部状态</option>
-            <option value="pending">待审批</option>
-            <option value="approved">已批准</option>
-            <option value="rejected">已驳回</option>
-          </select>
-          <button className="scada-btn secondary" type="button" onClick={loadData}>🔄 刷新</button>
-        </div>
-      </div>
-
-      <div className="scada-card">
-        {approvals.length === 0 ? (
-          <div className="empty-state"><div className="empty-state-icon">📋</div><div>暂无审批记录</div></div>
-        ) : (
-          <table className="scada-table">
-            <thead><tr><th>ID</th><th>目标</th><th>操作</th><th>发起人</th><th>状态</th><th>创建时间</th><th>决策</th></tr></thead>
-            <tbody>
-              {approvals.map((a) => (
-                <tr key={a.id}>
-                  <td className="font-mono" style={{ fontSize: 11 }}>{a.id}</td>
-                  <td style={{ fontSize: 12 }}>{a.target_id}</td>
-                  <td style={{ fontSize: 12 }}>{a.action}</td>
-                  <td style={{ fontSize: 12 }}>{a.actor}</td>
-                  <td>
-                    <span className="tag" style={{
-                      background: a.status === "pending" ? "rgba(245,158,11,0.15)" : a.status === "approved" ? "rgba(16,185,129,0.15)" : "rgba(239,68,68,0.15)",
-                      color: a.status === "pending" ? "#f59e0b" : a.status === "approved" ? "#10b981" : "#ef4444",
-                      fontWeight: 700,
-                    }}>
-                      {a.status === "pending" ? "待审批" : a.status === "approved" ? "已批准" : "已驳回"}
-                    </span>
-                  </td>
-                  <td style={{ fontSize: 11, color: "#94a3b8" }}>{a.created_at}</td>
-                  <td>
-                    {a.status === "pending" && (
-                      <div style={{ display: "flex", gap: 4 }}>
-                        <button className="scada-btn" style={{ fontSize: 10, padding: "2px 8px", background: "#10b981" }} type="button" onClick={() => handleDecide(a.id, "approved")}>✅ 批准</button>
-                        <button className="scada-btn" style={{ fontSize: 10, padding: "2px 8px", background: "#ef4444" }} type="button" onClick={() => handleDecide(a.id, "rejected")}>❌ 驳回</button>
-                      </div>
-                    )}
-                    {a.decided_by && <span style={{ fontSize: 10, color: "#94a3b8" }}>审批人: {a.decided_by}</span>}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-    </div>
-  );
+  return <DecisionApprovalSection />;
 }
 
 function AuditLogSection() {

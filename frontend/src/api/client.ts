@@ -13,6 +13,9 @@ import type {
   DatasetKind,
   DemoResetResponse,
   DecisionResponse,
+  DecisionApprovalSyncResponse,
+  DecisionRecordDetail,
+  DecisionRecordListResponse,
   DecisionSettingsResponse,
   DecisionSettingsUpdate,
   DemoBatch,
@@ -127,12 +130,14 @@ export async function postDecision(
   enterpriseId: string,
   data: Record<string, unknown>,
   scenarioId?: string,
+  signal?: AbortSignal,
 ): Promise<DecisionResponse | null> {
   try {
     const resp = await fetch(url("/api/v1/agent/decision"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ enterprise_id: enterpriseId, data, scenario_id: scenarioId }),
+      signal,
     });
     if (!resp.ok) return null;
     return (await resp.json()) as DecisionResponse;
@@ -248,6 +253,19 @@ export async function fetchDecisionBatchStatus(jobId: string): Promise<BatchJobS
   }
 }
 
+export async function cancelDecisionBatch(jobId: string): Promise<BatchJobStatus | null> {
+  try {
+    const resp = await fetch(
+      url(`/api/v1/agent/decision/batch/${encodeURIComponent(jobId)}/cancel`),
+      { method: "POST", headers: adminHeaders() },
+    );
+    if (!resp.ok) return null;
+    return (await resp.json()) as BatchJobStatus;
+  } catch {
+    return null;
+  }
+}
+
 export function decisionBatchDownloadUrl(jobId: string): string {
   return url(`/api/v1/agent/decision/batch/${encodeURIComponent(jobId)}/download`);
 }
@@ -259,6 +277,51 @@ export async function downloadDecisionBatch(jobId: string): Promise<Blob | null>
     });
     if (!resp.ok) return null;
     return await resp.blob();
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchDecisionRecords(params: Partial<{
+  enterprise_id: string;
+  final_status: string;
+  source: string;
+  job_id: string;
+  limit: number;
+  offset: number;
+}> = {}): Promise<DecisionRecordListResponse | null> {
+  try {
+    const usp = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== "") usp.set(k, String(v));
+    });
+    const suffix = usp.toString();
+    const resp = await fetch(url(`/api/v1/agent/decision/records${suffix ? `?${suffix}` : ""}`));
+    if (!resp.ok) return null;
+    return (await resp.json()) as DecisionRecordListResponse;
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchDecisionRecord(recordId: string): Promise<DecisionRecordDetail | null> {
+  try {
+    const resp = await fetch(url(`/api/v1/agent/decision/records/${encodeURIComponent(recordId)}`));
+    if (!resp.ok) return null;
+    return (await resp.json()) as DecisionRecordDetail;
+  } catch {
+    return null;
+  }
+}
+
+export async function syncDecisionApprovalsFromDisk(): Promise<DecisionApprovalSyncResponse | null> {
+  try {
+    const resp = await fetch(url("/api/v1/agent/decision/approvals/sync-from-disk"), {
+      method: "POST",
+      headers: adminHeaders(),
+    });
+    if (!resp.ok) return null;
+    return (await resp.json()) as DecisionApprovalSyncResponse;
   } catch {
     return null;
   }
@@ -594,9 +657,41 @@ export async function deleteShortTermMemory(id: string): Promise<boolean> {
       method: "DELETE",
       headers: adminHeaders(),
     });
-    return resp.ok;
+    if (!resp.ok) return false;
+    const data = await resp.json();
+    return data?.success ?? true;
   } catch {
     return false;
+  }
+}
+
+export async function deleteLongTermMemory(id: string): Promise<boolean> {
+  try {
+    const resp = await fetch(url(`/api/v1/memory/long-term/${encodeURIComponent(id)}`), {
+      method: "DELETE",
+      headers: adminHeaders(),
+    });
+    if (!resp.ok) return false;
+    const data = await resp.json();
+    return data?.success ?? true;
+  } catch {
+    return false;
+  }
+}
+
+export async function deleteEnterpriseDataBySource(
+  source: string,
+): Promise<{ success: boolean; deleted_count?: number }> {
+  try {
+    const usp = new URLSearchParams({ source });
+    const resp = await fetch(url(`/api/v1/memory/enterprise-data?${usp.toString()}`), {
+      method: "DELETE",
+      headers: adminHeaders(),
+    });
+    if (!resp.ok) return { success: false };
+    return jsonOrThrow<{ success: boolean; deleted_count?: number }>(resp);
+  } catch {
+    return { success: false };
   }
 }
 
@@ -721,6 +816,7 @@ export async function fetchMemoryStats(): Promise<{
   warning_experiences: { total: number; by_level: Record<string, number>; by_scenario: Record<string, number>; financial_total: number; timeline: Record<string, number> };
   iteration_count: number;
   pending_approvals: number;
+  decision_pending_reviews?: number;
   audit_log_count: number;
 } | null> {
   try {

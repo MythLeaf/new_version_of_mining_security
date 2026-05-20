@@ -607,6 +607,57 @@ async def add_long_term(item: LongTermMemoryItem) -> Dict[str, Any]:
     return entry
 
 
+@router.delete("/long-term/{item_id}")
+async def delete_long_term(item_id: str) -> Dict[str, bool]:
+    """
+    delete long term。
+
+        Args:
+            item_id (str): 参数 ``item_id``。
+
+        Returns:
+            (Dict[str, bool]): 函数返回值。
+    """
+
+    deleted_item = next((i for i in _long_term_store if i["id"] == item_id), None)
+    before = len(_long_term_store)
+    _long_term_store[:] = [i for i in _long_term_store if i["id"] != item_id]
+    _persist_store("long_term", _long_term_store)
+    if deleted_item and deleted_item.get("category") == "enterprise_data":
+        src = deleted_item.get("data_source")
+        if src and not any(
+            e.get("category") == "enterprise_data" and e.get("data_source") == src
+            for e in _long_term_store
+        ):
+            _enterprise_data_cache.pop(src, None)
+    return {"success": len(_long_term_store) < before}
+
+
+@router.delete("/enterprise-data")
+async def delete_enterprise_data_by_source(source: str = Query(...)) -> Dict[str, Any]:
+    """
+    按数据源删除全部 enterprise_data 长期记忆条目。
+
+        Args:
+            source (str): 数据源标识（文件名或相对路径）。
+
+        Returns:
+            (Dict[str, Any]): success 与 deleted_count。
+    """
+
+    before = len(_long_term_store)
+    _long_term_store[:] = [
+        i for i in _long_term_store
+        if not (i.get("category") == "enterprise_data" and i.get("data_source") == source)
+    ]
+    deleted_count = before - len(_long_term_store)
+    _enterprise_data_cache.pop(source, None)
+    _persist_store("long_term", _long_term_store)
+    if deleted_count > 0:
+        _record_audit("delete", "user", source, f"删除数据源 {source} 的 {deleted_count} 条企业数据记忆")
+    return {"success": deleted_count > 0, "deleted_count": deleted_count}
+
+
 @router.post("/migrate")
 async def migrate_to_long_term(req: MigrateRequest) -> List[Dict[str, Any]]:
     """
@@ -1195,6 +1246,9 @@ async def list_approvals(
             (Dict[str, Any]): 函数返回值。
     """
 
+    from mining_risk_serve.api.services.decision_approval import prune_orphaned_decision_approvals
+
+    prune_orphaned_decision_approvals()
     items = _approval_store.copy()
     if status:
         items = [i for i in items if i.get("status") == status]
@@ -1255,6 +1309,13 @@ async def decide_approval(approval_id: str, decision: str = Query(...), actor: s
     approval["decided_by"] = actor
     approval["decision_comment"] = comment
     approval["decided_at"] = _now_str()
+    if approval.get("type") == "decision_review":
+        try:
+            from mining_risk_serve.api.services.decision_approval import patch_decision_file_on_decide
+
+            patch_decision_file_on_decide(approval, decision, actor, comment)
+        except Exception as exc:
+            logger.warning("决策 JSON 审批回写失败: %s", exc)
     _record_audit("decide_approval", actor, approval_id, f"审批决策: {decision}", before=before, after=approval)
     _persist_store("approval_store", _approval_store)
     _persist_store("audit_log", _audit_log_store)
@@ -1432,6 +1493,9 @@ async def memory_stats() -> Dict[str, Any]:
             (Dict[str, Any]): 函数返回值。
     """
 
+    from mining_risk_serve.api.services.decision_approval import prune_orphaned_decision_approvals
+
+    prune_orphaned_decision_approvals()
     short_total = len(_short_term_store)
     long_total = len(_long_term_store)
     short_by_cat: Dict[str, int] = {}
@@ -1511,6 +1575,10 @@ async def memory_stats() -> Dict[str, Any]:
         },
         "iteration_count": len(_iteration_history),
         "pending_approvals": len([a for a in _approval_store if a.get("status") == "pending"]),
+        "decision_pending_reviews": len([
+            a for a in _approval_store
+            if a.get("status") == "pending" and a.get("type") == "decision_review"
+        ]),
         "audit_log_count": len(_audit_log_store),
     }
 

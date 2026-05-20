@@ -1,22 +1,28 @@
 import { useEffect, useState } from "react";
-import type { HealthResponse } from "../api/types";
+import type { HealthResponse, ScenarioId } from "../api/types";
+import { SCENARIO_LABELS } from "../data/demoData";
+import BatchJobBanner from "./BatchJobBanner";
 
 interface Props {
   health: HealthResponse | null;
-  scenarioName: string;
+  scenario: ScenarioId;
+  onScenarioChange: (s: ScenarioId) => void;
   backendOnline: boolean;
   demoMode?: boolean;
   onMenuToggle?: () => void;
   menuExpanded?: boolean;
+  onOpenRiskTab?: () => void;
 }
 
 export default function StatusBar({
   health,
-  scenarioName,
+  scenario,
+  onScenarioChange,
   backendOnline,
   demoMode,
   onMenuToggle,
   menuExpanded,
+  onOpenRiskTab,
 }: Props) {
   const [now, setNow] = useState(new Date());
 
@@ -50,7 +56,23 @@ export default function StatusBar({
             <span className="font-mono">系统 {statusText}</span>
           </div>
           <div className="status-bar-item font-mono">v{version}</div>
-          <div className="status-bar-item">场景: {scenarioName}</div>
+          <div className="status-bar-item status-bar-scenario">
+            <label className="status-bar-scenario-label" htmlFor="scenario-select-top">
+              监管场景
+            </label>
+            <select
+              id="scenario-select-top"
+              className="scada-select status-bar-scenario-select"
+              value={scenario}
+              onChange={(e) => onScenarioChange(e.target.value as ScenarioId)}
+            >
+              {(Object.keys(SCENARIO_LABELS) as ScenarioId[]).map((s) => (
+                <option key={s} value={s}>
+                  {SCENARIO_LABELS[s]}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
         <div className="status-bar-item font-mono" aria-live="polite">
           {time}
@@ -66,6 +88,7 @@ export default function StatusBar({
           演示模式：主 Tab 每 12 秒自动轮播，便于路演展示。
         </div>
       )}
+      <BatchJobBanner onOpenRiskTab={onOpenRiskTab} />
     </>
   );
 }

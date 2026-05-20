@@ -17,7 +17,10 @@ from jinja2 import Template
 from langgraph.graph import END, StateGraph
 from typing_extensions import TypedDict
 
-from mining_risk_common.dataplane.field_normalizer import normalize_enterprise_record
+from mining_risk_common.dataplane.field_normalizer import (
+    extract_decision_upload_constraints,
+    normalize_enterprise_record,
+)
 from mining_risk_common.dataplane.preprocessor import FeatureEngineeringPipeline
 from mining_risk_serve.harness.knowledge_base import KnowledgeBaseManager
 from mining_risk_serve.harness.memory import HybridMemoryManager
@@ -450,6 +453,7 @@ async def node_decision_generation(state: AgentState, scenario: ScenarioConfig) 
         ) if memory_results else "暂无相关历史案例"
 
         physics_context = _load_physics_context(scenario)
+        upload_constraints = extract_decision_upload_constraints(state.get("raw_data") or {})
 
         prompt = template.render(
             enterprise_id=state["enterprise_id"],
@@ -462,6 +466,9 @@ async def node_decision_generation(state: AgentState, scenario: ScenarioConfig) 
             ),
             memory_context=memory_context,
             physics_context=physics_context,
+            risk_description=upload_constraints["risk_description"],
+            table_column_names=upload_constraints["table_column_names"],
+            uploaded_predicted_level=upload_constraints["uploaded_predicted_level"],
         )
 
         config = get_config()

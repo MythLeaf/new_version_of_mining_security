@@ -40,6 +40,17 @@ FIELD_ALIASES: Dict[str, List[str]] = {
     "indus_type_large": ["国民经济大类"],
     "indus_type_middle": ["国民经济中类"],
     "indus_type_small": ["国民经济小类"],
+    "above_designated": ["是否规上企业"],
+    "if_insure": ["是否投保"],
+    "if_comply_formality": ["是否履行三同时手续"],
+    "factory_in_factory": ["厂中厂"],
+    "if_valid": ["数据有效标识"],
+    "risk_company_flag": ["风险重点企业"],
+    "risk_company_key_flag": ["关键风险企业"],
+    "risk_whp_flag": ["危化品企业标识"],
+    "risk_whp_use_flag": ["危险化学品使用"],
+    "risk_finite_key_flag": ["有限空间关键企业"],
+    "latest_risk_report_id": ["最近风险报告ID", "风险报告ID"],
     "risk_accident_flag": ["是否发生事故", "曾发生事故"],
     "has_risk_item": ["是否发现问题隐患 0-否 1-是", "是否发现问题隐患", "有风险项"],
     "dangerous_chemical_enterprise": ["危险化学品企业", "危化品企业"],
@@ -247,7 +258,22 @@ def _derive_demo_fields(record: MutableMapping[str, Any]) -> None:
     """从前端演示字段派生一组训练特征，尽量保持语义保守。"""
 
 
-    if _has_value(record.get("风险等级")) and not _has_value(record.get("risk_level_d_count")):
+    _has_explicit_risk_counts = any(
+        _has_value(record.get(key))
+        for key in (
+            "risk_total_count",
+            "总风险数",
+            "risk_level_a_count",
+            "A级风险数",
+            "risk_level_b_count",
+            "B级风险数",
+            "risk_level_c_count",
+            "C级风险数",
+            "risk_level_d_count",
+            "D级风险数",
+        )
+    )
+    if _has_value(record.get("风险等级")) and not _has_explicit_risk_counts:
         try:
             risk_level = int(float(record["风险等级"]))
         except (TypeError, ValueError):
@@ -265,6 +291,8 @@ def _derive_demo_fields(record: MutableMapping[str, Any]) -> None:
 
     if _has_value(record.get("重大危险源数量")):
         record.setdefault("is_major_hazards", 1 if _to_float(record.get("重大危险源数量")) > 0 else 0)
+    if _has_value(record.get("重大危险源")) and not _has_value(record.get("is_major_hazards")):
+        record.setdefault("is_major_hazards", _to_int(record.get("重大危险源")))
 
     if _has_value(record.get("危化品储罐数量")):
         record.setdefault("dangerous_chemical_enterprise", 1 if _to_float(record.get("危化品储罐数量")) > 0 else 0)
@@ -345,6 +373,48 @@ def _to_int(value: Any) -> int:
         return int(float(value))
     except (TypeError, ValueError):
         return 0
+
+
+RISK_DESCRIPTION_KEYS: tuple[str, ...] = ("具体风险描述", "risk_desc", "risk_description")
+UPLOADED_PREDICTED_LEVEL_KEYS: tuple[str, ...] = ("预测风险等级", "predicted_risk_level_label")
+_DECISION_CONTEXT_SKIP_KEYS: frozenset[str] = frozenset(
+    {"features", "memory_results", "prediction", "decision", "node_status"}
+)
+
+
+def extract_decision_upload_constraints(record: Mapping[str, Any]) -> Dict[str, str]:
+    """提取决策 Prompt 所需的上传表格约束（具体风险描述与列名）。
+
+    Args:
+        record: 规范化前/后的企业单行数据（通常含中文表头键名）。
+
+    Returns:
+        含 ``risk_description``、``table_column_names``、``uploaded_predicted_level`` 的字典。
+    """
+    risk_description = "（未提供）"
+    for key in RISK_DESCRIPTION_KEYS:
+        if _has_value(record.get(key)):
+            risk_description = str(record[key]).strip()
+            break
+
+    uploaded_predicted_level = "（未提供）"
+    for key in UPLOADED_PREDICTED_LEVEL_KEYS:
+        if _has_value(record.get(key)):
+            uploaded_predicted_level = str(record[key]).strip()
+            break
+
+    column_names = [
+        str(key)
+        for key in record.keys()
+        if str(key) not in _DECISION_CONTEXT_SKIP_KEYS
+    ]
+    table_column_names = "、".join(column_names) if column_names else "（未提供）"
+
+    return {
+        "risk_description": risk_description,
+        "table_column_names": table_column_names,
+        "uploaded_predicted_level": uploaded_predicted_level,
+    }
 
 
 def _to_float(value: Any) -> float:

@@ -59,6 +59,44 @@ def _enterprise_id(row_data: Dict[str, Any], row_index: int) -> str:
     return f"ROW-{row_index + 1}"
 
 
+def _discard_output_file(output_path: Optional[str]) -> None:
+    if not output_path:
+        return
+    try:
+        path = Path(output_path)
+        if path.is_file():
+            path.unlink()
+    except OSError as exc:
+        logger.warning("删除已终止任务的决策输出失败 path=%s: %s", output_path, exc)
+
+
+def _mark_queued_cancelled(job: Dict[str, Any]) -> None:
+    for item in job["results"]:
+        if item["status"] == "queued":
+            item["status"] = "cancelled"
+
+
+def _mark_inflight_cancelling(job: Dict[str, Any]) -> None:
+    for item in job["results"]:
+        if item["status"] == "running":
+            item["status"] = "cancelling"
+
+
+def _refresh_job_status(job: Dict[str, Any]) -> None:
+    if job.get("cancelled"):
+        _mark_queued_cancelled(job)
+        if job["running"] > 0:
+            _mark_inflight_cancelling(job)
+        job["status"] = "cancelled" if job["running"] == 0 else "cancelling"
+        return
+    if job["status"] in {"completed", "completed_with_errors", "cancelled", "cancelling"}:
+        return
+    if job["completed"] + job["failed"] >= job["total"] and job["running"] == 0:
+        job["status"] = "completed" if job["failed"] == 0 else "completed_with_errors"
+    elif job["running"] > 0 or job["completed"] + job["failed"] > 0:
+        job["status"] = "running"
+
+
 def _snapshot(job: Dict[str, Any]) -> BatchJobStatus:
     return BatchJobStatus(
         job_id=job["job_id"],
@@ -128,6 +166,7 @@ class DecisionBatchService:
             "errors": [],
             "created_at": time.time(),
             "finished_at": None,
+            "cancelled": False,
         }
         _JOBS[job_id] = job
         asyncio.create_task(self._run_job(job_id, rows, scenario))
@@ -143,6 +182,22 @@ class DecisionBatchService:
         job = _JOBS.get(job_id)
         if not job:
             raise HTTPException(status_code=404, detail="批量任务不存在")
+        _refresh_job_status(job)
+        return _snapshot(job)
+
+    def cancel_job(self, job_id: str) -> BatchJobStatus:
+        """请求终止批量任务：不再处理新的排队行。"""
+        job = _JOBS.get(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="批量任务不存在")
+        if job["status"] in {"completed", "completed_with_errors", "cancelled"}:
+            return _snapshot(job)
+        job["cancelled"] = True
+        _refresh_job_status(job)
+        if job["status"] == "cancelled":
+            job["finished_at"] = time.time()
+        store = DecisionStore()
+        self._write_manifest(store, job)
         return _snapshot(job)
 
     def zip_path(self, job_id: str) -> Path:
@@ -166,9 +221,18 @@ class DecisionBatchService:
 
         async def run_one(row_index: int, row_data: Dict[str, Any]) -> None:
             item = job["results"][row_index]
+            if job.get("cancelled"):
+                _refresh_job_status(job)
+                self._write_manifest(store, job)
+                return
             async with semaphore:
+                if job.get("cancelled"):
+                    _refresh_job_status(job)
+                    self._write_manifest(store, job)
+                    return
                 item["status"] = "running"
                 job["running"] += 1
+                _refresh_job_status(job)
                 self._write_manifest(store, job)
                 enterprise_id = str(item["enterprise_id"])
                 try:
@@ -183,10 +247,16 @@ class DecisionBatchService:
                         job_id=job_id,
                         row_index=row_index,
                     )
-                    item["status"] = "completed"
-                    item["risk_level"] = response.predicted_level
-                    item["output_path"] = response.output_display_path or response.output_path
-                    job["completed"] += 1
+                    if job.get("cancelled"):
+                        _discard_output_file(response.output_path)
+                        item["status"] = "cancelled"
+                        item["risk_level"] = None
+                        item["output_path"] = None
+                    else:
+                        item["status"] = "completed"
+                        item["risk_level"] = response.predicted_level
+                        item["output_path"] = response.output_display_path or response.output_path
+                        job["completed"] += 1
                 except Exception as exc:
                     logger.error("批量完整决策单行失败 job=%s row=%s: %s", job_id, row_index, exc)
                     item["status"] = "failed"
@@ -195,14 +265,25 @@ class DecisionBatchService:
                     job["errors"].append({"row_index": row_index, "enterprise_id": enterprise_id, "error": str(exc)})
                 finally:
                     job["running"] -= 1
+                    _refresh_job_status(job)
                     self._write_manifest(store, job)
 
         await asyncio.gather(*(run_one(i, row_data) for i, row_data in enumerate(rows)))
-        job["status"] = "completed" if job["failed"] == 0 else "completed_with_errors"
+        if job.get("cancelled"):
+            for item in job["results"]:
+                if item["status"] in {"queued", "running"}:
+                    _discard_output_file(item.get("output_path"))
+                    item["status"] = "cancelled"
+                    item["output_path"] = None
+                    item["risk_level"] = None
+            job["status"] = "cancelled"
+        else:
+            job["status"] = "completed" if job["failed"] == 0 else "completed_with_errors"
         job["finished_at"] = time.time()
         self._write_manifest(store, job)
 
     def _write_manifest(self, store: DecisionStore, job: Dict[str, Any]) -> None:
+        _refresh_job_status(job)
         manifest = _snapshot(job).model_dump()
         output = store.save_manifest(job["job_id"], manifest)
         job["manifest_path"] = output["display_path"]

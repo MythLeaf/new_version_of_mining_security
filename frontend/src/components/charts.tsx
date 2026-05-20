@@ -1,6 +1,7 @@
 import ReactECharts from "echarts-for-react";
 import type { ReactNode } from "react";
 import type { MemoryChartItem, MemoryHeatmap, MemoryTrendPoint, ShapContribution } from "../api/types";
+import { formatFeatureLabel } from "../lib/featureLabels";
 
 const LEVEL_COLORS: Record<string, string> = {
   红: "#ef4444",
@@ -12,9 +13,11 @@ const LEVEL_COLORS: Record<string, string> = {
 interface ProbProps {
   probs: Record<string, number>;
   centerLevel?: string;
+  /** 弹窗内建议关闭，避免滚动时 ResizeObserver 触发反复重绘 */
+  autoResize?: boolean;
 }
 
-export function ProbabilityChart({ probs, centerLevel }: ProbProps) {
+export function ProbabilityChart({ probs, centerLevel, autoResize = true }: ProbProps) {
   const data = Object.entries(probs).map(([name, value]) => ({
     name,
     value: Number(value),
@@ -54,7 +57,7 @@ export function ProbabilityChart({ probs, centerLevel }: ProbProps) {
       <div className="scada-card-title" style={{ padding: "8px 8px 0" }}>
         概率分布
       </div>
-      <ReactECharts option={option} style={{ height: 280 }} />
+      <ReactECharts option={option} style={{ height: 280 }} autoResize={autoResize} />
     </div>
   );
 }
@@ -62,9 +65,10 @@ export function ProbabilityChart({ probs, centerLevel }: ProbProps) {
 interface ShapProps {
   contributions: ShapContribution[];
   topN?: number;
+  autoResize?: boolean;
 }
 
-export function ShapChart({ contributions, topN = 5 }: ShapProps) {
+export function ShapChart({ contributions, topN = 5, autoResize = true }: ShapProps) {
   const sorted = [...contributions]
     .sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution))
     .slice(0, topN)
@@ -73,7 +77,7 @@ export function ShapChart({ contributions, topN = 5 }: ShapProps) {
   const option = {
     backgroundColor: "transparent",
     tooltip: { trigger: "axis" as const },
-    grid: { left: 100, right: 30, top: 30, bottom: 30 },
+    grid: { left: 132, right: 30, top: 30, bottom: 30 },
     xAxis: {
       type: "value" as const,
       axisLine: { lineStyle: { color: "#374151" } },
@@ -82,9 +86,9 @@ export function ShapChart({ contributions, topN = 5 }: ShapProps) {
     },
     yAxis: {
       type: "category" as const,
-      data: sorted.map((s) => s.feature),
+      data: sorted.map((s) => formatFeatureLabel(s.feature)),
       axisLine: { lineStyle: { color: "#374151" } },
-      axisLabel: { color: "#e5e7eb", fontSize: 11 },
+      axisLabel: { color: "#e5e7eb", fontSize: 11, width: 120, overflow: "truncate" },
     },
     series: [
       {
@@ -110,7 +114,7 @@ export function ShapChart({ contributions, topN = 5 }: ShapProps) {
       <div className="scada-card-title" style={{ padding: "8px 8px 0" }}>
         SHAP TOP{topN} 归因
       </div>
-      <ReactECharts option={option} style={{ height: 280 }} />
+      <ReactECharts option={option} style={{ height: 280 }} autoResize={autoResize} />
     </div>
   );
 }

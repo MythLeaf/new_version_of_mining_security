@@ -32,6 +32,30 @@ def batch_config_tmp(monkeypatch, tmp_path):
     monkeypatch.setattr(config.decision, "batch_max_rows", old_rows)
 
 
+class SlowPredictionService:
+    async def run_decision(self, request, *, source, job_id, row_index, **_kwargs):
+        await asyncio.sleep(0.2)
+        response = DecisionResponse(
+            enterprise_id=request.enterprise_id,
+            scenario_id=request.scenario_id or "chemical",
+            final_status="APPROVE",
+            predicted_level="蓝",
+            probability_distribution={"蓝": 1.0},
+            shap_contributions=[],
+        )
+        output = DecisionStore().save_decision(
+            request=request,
+            response=response,
+            final_state={"memory_results": []},
+            source=source,
+            job_id=job_id,
+            row_index=row_index,
+        )
+        response.output_path = output["path"]
+        response.output_display_path = output["display_path"]
+        return response
+
+
 class FakePredictionService:
     async def run_decision(self, request, *, source, job_id, row_index, **_kwargs):
         response = DecisionResponse(
@@ -77,5 +101,88 @@ def test_batch_job_processes_rows_and_writes_manifest(batch_config_tmp):
         assert status.manifest_path
         assert all(item.output_path for item in status.results)
         assert Path(batch_config_tmp / "var" / "decisions" / "batches" / created.job_id / "manifest.json").exists()
+
+    asyncio.run(run_case())
+
+
+def test_batch_job_cancel_stops_queued_rows(batch_config_tmp):
+    async def run_case():
+        rows = ["企业ID\n"] + [f"E{i:03d}\n" for i in range(8)]
+        csv = "".join(rows).encode("utf-8")
+        upload = UploadFile(filename="batch.csv", file=io.BytesIO(csv))
+        service = DecisionBatchService(SlowPredictionService())
+
+        created = await service.create_job(upload, "chemical")
+        assert created.total == 8
+
+        await asyncio.sleep(0.05)
+        cancelled = service.cancel_job(created.job_id)
+        assert cancelled.status in {"cancelled", "cancelling"}
+
+        for _ in range(60):
+            status = service.get_status(created.job_id)
+            if status.status == "cancelled":
+                break
+            await asyncio.sleep(0.05)
+
+        status = service.get_status(created.job_id)
+        assert status.status == "cancelled"
+        cancelled_rows = [item for item in status.results if item.status == "cancelled"]
+        assert len(cancelled_rows) >= 1
+        assert status.completed + status.failed + len(cancelled_rows) == status.total
+
+        batch_dir = batch_config_tmp / "var" / "decisions" / "batches" / created.job_id
+        decision_files = [p for p in batch_dir.glob("*.json") if p.name != "manifest.json"]
+        assert len(decision_files) == status.completed
+
+    asyncio.run(run_case())
+
+
+def test_cancel_job_reports_cancelling_while_rows_inflight(batch_config_tmp):
+    async def run_case():
+        rows = ["企业ID\n"] + [f"E{i:03d}\n" for i in range(6)]
+        csv = "".join(rows).encode("utf-8")
+        upload = UploadFile(filename="batch.csv", file=io.BytesIO(csv))
+        service = DecisionBatchService(SlowPredictionService())
+
+        created = await service.create_job(upload, "chemical")
+        await asyncio.sleep(0.05)
+        status = service.cancel_job(created.job_id)
+        assert status.status == "cancelling"
+        assert status.running > 0
+        running_rows = [item for item in status.results if item.status == "cancelling"]
+        assert len(running_rows) >= 1
+        polled = service.get_status(created.job_id)
+        assert polled.status == "cancelling"
+
+    asyncio.run(run_case())
+
+
+def test_batch_cancel_discards_inflight_json(batch_config_tmp):
+    async def run_case():
+        rows = ["企业ID\n"] + [f"E{i:03d}\n" for i in range(4)]
+        csv = "".join(rows).encode("utf-8")
+        upload = UploadFile(filename="batch.csv", file=io.BytesIO(csv))
+        service = DecisionBatchService(SlowPredictionService())
+
+        created = await service.create_job(upload, "chemical")
+        await asyncio.sleep(0.25)
+        service.cancel_job(created.job_id)
+
+        for _ in range(80):
+            status = service.get_status(created.job_id)
+            if status.status == "cancelled":
+                break
+            await asyncio.sleep(0.05)
+
+        status = service.get_status(created.job_id)
+        assert status.status == "cancelled"
+        batch_dir = batch_config_tmp / "var" / "decisions" / "batches" / created.job_id
+        decision_files = [p for p in batch_dir.glob("*.json") if p.name != "manifest.json"]
+        completed_rows = [item for item in status.results if item.status == "completed"]
+        assert len(decision_files) == len(completed_rows)
+        for item in status.results:
+            if item.status == "cancelled":
+                assert not item.output_path
 
     asyncio.run(run_case())

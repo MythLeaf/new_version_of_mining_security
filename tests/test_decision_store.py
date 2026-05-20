@@ -52,6 +52,44 @@ def test_decision_output_rejects_path_outside_var(decision_config_tmp):
         resolve_output_dir(str(decision_config_tmp / "outside"))
 
 
+def test_list_all_summaries_recurses_batch_dir(decision_config_tmp):
+    import json
+
+    store = DecisionStore()
+    root = store.output_dir / "ENT-BATCH-ROOT.json"
+    batch = store.batch_dir("job-x") / "0001_ENT-BATCH.json"
+    for path, ent, status in (
+        (root, "ENT-BATCH-ROOT", "APPROVE"),
+        (batch, "ENT-BATCH-CHILD", "HUMAN_REVIEW"),
+    ):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                {
+                    "request": {"enterprise_id": ent, "scenario_id": "chemical", "data": {}},
+                    "response": {
+                        "enterprise_id": ent,
+                        "scenario_id": "chemical",
+                        "final_status": status,
+                        "predicted_level": "红",
+                    },
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+
+    summaries = store.list_all_summaries()
+    assert len(summaries) == 2
+    ids = {s["record_id"] for s in summaries}
+    assert "ENT-BATCH-ROOT.json" in ids
+    assert "batches/job-x/0001_ENT-BATCH.json" in ids
+
+    filtered = store.list_all_summaries(final_status="HUMAN_REVIEW")
+    assert len(filtered) == 1
+    assert filtered[0]["job_id"] == "job-x"
+
+
 def test_runtime_settings_update_validates_and_persists(decision_config_tmp):
     settings = update_decision_settings({
         "output_dir": str(decision_config_tmp / "var" / "custom_decisions"),

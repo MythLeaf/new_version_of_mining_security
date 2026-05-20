@@ -4,9 +4,9 @@
 Router 层仅负责 HTTP 绑定；业务逻辑见 ``api.services.prediction_service``。
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 
 from mining_risk_serve.api.schemas.prediction import (
@@ -16,6 +16,10 @@ from mining_risk_serve.api.schemas.prediction import (
     DecisionSettingsUpdate,
     BatchDecisionResponse,
     BatchJobStatus,
+    DecisionApprovalSyncResponse,
+    DecisionRecordDetail,
+    DecisionRecordListResponse,
+    DecisionRecordSummary,
     LLMConfigResponse,
     LLMUpdateRequest,
     PredictRequest,
@@ -24,8 +28,9 @@ from mining_risk_serve.api.schemas.prediction import (
     ScenarioSwitchResponse,
 )
 from mining_risk_serve.api.security import require_admin_token
+from mining_risk_serve.api.services.decision_approval import sync_decision_approvals_from_disk
 from mining_risk_serve.api.services.decision_batch_service import get_batch_service
-from mining_risk_serve.api.services.decision_store import get_decision_settings, update_decision_settings
+from mining_risk_serve.api.services.decision_store import DecisionStore, get_decision_settings, update_decision_settings
 from mining_risk_serve.api.services.prediction_service import PredictionService, get_prediction_service
 from mining_risk_common.utils.logger import get_logger
 
@@ -110,6 +115,17 @@ async def decision_batch_status(
     return get_batch_service(service).get_status(job_id)
 
 
+@agent_router.post("/decision/batch/{job_id}/cancel", response_model=BatchJobStatus)
+async def cancel_decision_batch(
+    job_id: str,
+    _: None = Depends(require_admin_token),
+    service: PredictionService = Depends(get_prediction_service),
+) -> BatchJobStatus:
+    """终止批量完整决策任务：取消排队行，运行中行完成后丢弃 JSON 输出。"""
+
+    return get_batch_service(service).cancel_job(job_id)
+
+
 @agent_router.get("/decision/batch/{job_id}/download")
 async def download_decision_batch(
     job_id: str,
@@ -129,6 +145,71 @@ async def decision_settings(
     """返回完整决策结果输出设置。"""
 
     return DecisionSettingsResponse(**get_decision_settings())
+
+
+@agent_router.get("/decision/records", response_model=DecisionRecordListResponse)
+async def list_decision_records(
+    enterprise_id: Optional[str] = Query(None),
+    final_status: Optional[str] = Query(None),
+    source: Optional[str] = Query(None),
+    job_id: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+) -> DecisionRecordListResponse:
+    """列出已持久化的完整决策 JSON 记录。"""
+
+    store = DecisionStore()
+    items = store.list_all_summaries(
+        enterprise_id=enterprise_id,
+        final_status=final_status,
+        source=source,
+        job_id=job_id,
+    )
+    total = len(items)
+    page = items[offset : offset + limit]
+    return DecisionRecordListResponse(
+        total=total,
+        items=[DecisionRecordSummary(**item) for item in page],
+        offset=offset,
+        limit=limit,
+    )
+
+
+@agent_router.get("/decision/records/{record_id:path}", response_model=DecisionRecordDetail)
+async def get_decision_record(record_id: str) -> DecisionRecordDetail:
+    """读取单条完整决策 JSON 详情。"""
+
+    try:
+        store = DecisionStore()
+        record = store.load_record(record_id)
+        return DecisionRecordDetail(
+            record_id=record.get("record_id", record_id),
+            display_path=record.get("display_path", ""),
+            created_at=record.get("created_at"),
+            source=record.get("source"),
+            job_id=record.get("job_id"),
+            row_index=record.get("row_index"),
+            mock=bool(record.get("mock")),
+            request=record.get("request") or {},
+            response=record.get("response") or {},
+            memory_results=record.get("memory_results"),
+            approval=record.get("approval"),
+            final_state_summary=record.get("final_state_summary"),
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@agent_router.post("/decision/approvals/sync-from-disk", response_model=DecisionApprovalSyncResponse)
+async def sync_decision_approvals(
+    _: None = Depends(require_admin_token),
+) -> DecisionApprovalSyncResponse:
+    """将磁盘上 HUMAN_REVIEW 历史决策同步到待审批队列。"""
+
+    result = sync_decision_approvals_from_disk()
+    return DecisionApprovalSyncResponse(**result)
 
 
 @agent_router.put("/decision/settings", response_model=DecisionSettingsResponse)
