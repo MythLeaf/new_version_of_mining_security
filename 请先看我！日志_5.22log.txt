@@ -1,0 +1,50 @@
+操作日志
+
+现已将所有绝对路径改成相对路径：原路径全都是绝对路径，开了半天一直报错，点进去才发现全是绝对路径，没绷住
+重写README_rewrite.md：原README完全是胡编乱造，现已重写 README 为可运行/演示优先的快速说明文档。
+
+
+前后端能跑通，修复启动与运行时错误，保证演示时即便模型/LLM 不可用也能降级演示。
+
+关键修改（按文件/模块）
+- frontend/src/demoData.ts：添加 demo 数据与 mock 生成函数（解决 Vite 导入错误）。
+- frontend/src/App.tsx、pages 和 components：修复导入路径，从 "./data/demoData" 改为项目相对路径，并接入 demo 数据。
+- frontend/src/components/Sidebar.tsx：把侧栏版本号从硬编码改为从 /health 获取并显示 runtime 版本。
+- api/main.py：重构路由导入逻辑——按模块单独 import_module，以免某个子模块导入失败导致整个 app 无法启动；增加对 prediction 提供的 agent_router 的回退实现（包含 /decision, /decision/stream, /llm 等接口）；当 iteration 模块缺失时提供回退 /api/v1/iteration/status 与 /trigger。
+- utils/logger.py：增强日志创建容错，文件/目录创建失败时回退到控制台日志，避免因日志权限导致进程崩溃。
+- 新增 Windows-friendly 脚本：start_backend_cmd.bat、start_frontend_cmd.bat（便于 CMD 启动）。
+- 修复若干缩进/语法/导入错误，确保后端在缺失可选依赖时仍能启动并提供回退响应。
+- 新增 README_rewrite.md：原README完全是胡编乱造，现已重写 README 为可运行/演示优先的快速说明文档。
+
+运行状态
+- 结果：前端与后端现在可以启动并运行。前端会从后端 /health 获取版本并显示；当后端某些模块（prediction/iteration）不可用时，后端会返回结构化 Mock 或回退结果，前端能正确渲染“演示模式”输出。
+- 限制：部分真实模型/LLM 功能仍依赖外部资源与模型文件；回退仅为演示和路演使用，不替代生产模型。
+
+提交与环境问题
+- 说明：尝试自动提交修改时遇到环境缺少 pwsh（PowerShell 7），因此自动 git commit 未能在本会话完成。建议在本机终端用普通 git 命令提交更改。
+
+大量 *_1 文件
+- 原因：编辑器、自动合并或修复脚本产生的备份/副本，用来保留原始文件以便回退。保留它们是安全的，但如需清理，应先比对哈希/差异后再删除。
+
+后续建议（工程/架构/运维层面）
+（摘自已列出建议，仅供参考）
+主要还是可视化效果吧，此外页面左侧系统状态一直提示无法获取迭代状态无待审批事项，需要修正，
+其他的AI给出的建议如下：
+- 依赖管理：固定版本、拆分 requirements（api/dev/ml），使用 constraints 文件。
+- Docker/compose：添加 healthcheck、资源限制、重启策略与构建缓存优化。
+- 配置验证：在启动时用 pydantic/schema 校验 config.yaml，启动失败时给出明确错误。
+- 日志与监控：统一结构化日志、接入 Prometheus 指标与 Sentry/OTel。
+- 路由鲁棒性：补充单元测试覆盖各回退分支，确保回退路径受覆盖。
+- 安全：把密钥移至环境或 vault，强制 admin token 验证和速率限制。
+- 性能：做异步热点剖析，数据库/IO 池化与缓存（Redis/内存 LRU）。
+- 前端质量：补齐 TypeScript 类型、增加组件单元测试与 E2E（Playwright）。
+- CI/CD：缓存依赖、并行化测试、自动构建并推镜像到 registry。
+- 文档：拆分 QUICKSTART/DEPLOY/API，维护 changelog 与 release-notes。
+- 可观测性：添加请求级 trace/request-id、依赖就绪探测、子健康检查。
+- 仓库清理：归档或审查 *_1 备份文件、优化 .gitignore。
+
+
+现在前后端能跑了，演示态很稳。
+
+此文件已保存： ./operation_log.txt（项目根目录）
+我已经稳稳地接住你，接住你，接住你，接住你，接住你了（）
