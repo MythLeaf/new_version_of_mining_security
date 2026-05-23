@@ -16,7 +16,7 @@ from mining_risk_common.compat.pickle_legacy import register_legacy_pickle_modul
 register_legacy_pickle_modules()
 
 from mining_risk_serve.api.exception_handlers import register_exception_handlers
-from mining_risk_serve.api.routers import audit, data, iteration, knowledge, memory, prediction
+from mining_risk_serve.api.routers import audit, data, iteration, knowledge, memory, prediction, visualization
 from mining_risk_serve.api.routers.prediction import agent_router
 from mining_risk_serve.api.schemas.common import HealthPayload
 from mining_risk_common.utils.config import get_config, resolve_project_path
@@ -163,6 +163,9 @@ def create_app() -> FastAPI:
     app.include_router(audit.router, prefix="/api/v1/audit", tags=["审计日志"])
     app.include_router(agent_router, prefix="/api/v1/agent", tags=["决策智能体"])
     app.include_router(iteration.router, prefix="/api/v1/iteration", tags=["模型迭代"])
+    app.include_router(
+        visualization.router, prefix="/api/v1/visualization", tags=["数据可视化"]
+    )
     app.include_router(memory.router, prefix="/api/v1/memory", tags=["记忆库管理"])
 
     register_exception_handlers(app)

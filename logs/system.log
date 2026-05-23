@@ -10837,3 +10837,66 @@ json.decoder.JSONDecodeError: Expecting ',' delimiter: line 1 column 16217556 (c
 2026-05-20 16:41:40,368 - mining_risk_serve.api.routers.memory - INFO - 持久化 long_term 成功: 47 条
 2026-05-20 16:41:40,372 - mining_risk_serve.api.routers.memory - INFO - 持久化 audit_log 成功: 126 条
 2026-05-20 16:43:09,480 - mining_risk_serve.api.main - INFO - 应用关闭
+2026-05-23 23:41:00,850 - mining_risk_common.dataplane.preprocessor - INFO - 特征工程完成，输出形状: (3, 28)
+2026-05-23 23:41:00,852 - mining_risk_common.dataplane.preprocessor - INFO - 特征工程完成，输出形状: (2, 0)
+2026-05-23 23:41:00,853 - mining_risk_common.dataplane.preprocessor - INFO - Pipeline 已保存至 /var/folders/dm/45_lppg54tg53bkg_5knc48h0000gn/T/tmp1fmwbrzi.pkl
+2026-05-23 23:41:00,943 - mining_risk_common.dataplane.preprocessor - INFO - Pipeline 已从 /var/folders/dm/45_lppg54tg53bkg_5knc48h0000gn/T/tmp1fmwbrzi.pkl 加载
+2026-05-23 23:41:00,962 - mining_risk_serve.agent.workflow - INFO - 场景已切换至: metallurgy (冶金)
+2026-05-23 23:41:00,962 - mining_risk_serve.agent.workflow - INFO - 场景已切换至: dust (粉尘涉爆)
+2026-05-23 23:41:00,966 - mining_risk_serve.agent.workflow - INFO - 场景已切换至: dust (粉尘涉爆)
+2026-05-23 23:41:09,480 - mining_risk_common.dataplane.preprocessor - INFO - 特征工程完成，输出形状: (3, 28)
+2026-05-23 23:41:09,482 - mining_risk_common.dataplane.preprocessor - INFO - 特征工程完成，输出形状: (2, 0)
+2026-05-23 23:41:09,482 - mining_risk_common.dataplane.preprocessor - INFO - Pipeline 已保存至 /var/folders/dm/45_lppg54tg53bkg_5knc48h0000gn/T/tmpo7tjgs40.pkl
+2026-05-23 23:41:09,682 - mining_risk_common.dataplane.preprocessor - INFO - Pipeline 已从 /var/folders/dm/45_lppg54tg53bkg_5knc48h0000gn/T/tmpo7tjgs40.pkl 加载
+2026-05-23 23:41:38,646 - mining_risk_common.dataplane.preprocessor - INFO - 特征工程完成，输出形状: (3, 28)
+2026-05-23 23:41:38,647 - mining_risk_common.dataplane.preprocessor - INFO - 特征工程完成，输出形状: (2, 0)
+2026-05-23 23:41:38,648 - mining_risk_common.dataplane.preprocessor - INFO - Pipeline 已保存至 /var/folders/dm/45_lppg54tg53bkg_5knc48h0000gn/T/tmpd859d_p5.pkl
+2026-05-23 23:41:38,648 - mining_risk_common.dataplane.preprocessor - INFO - Pipeline 已从 /var/folders/dm/45_lppg54tg53bkg_5knc48h0000gn/T/tmpd859d_p5.pkl 加载
+2026-05-23 23:41:38,664 - mining_risk_serve.agent.workflow - INFO - 场景已切换至: metallurgy (冶金)
+2026-05-23 23:41:38,665 - mining_risk_serve.agent.workflow - INFO - 场景已切换至: dust (粉尘涉爆)
+2026-05-23 23:41:38,668 - mining_risk_serve.agent.workflow - INFO - 场景已切换至: dust (粉尘涉爆)
+2026-05-23 23:41:45,463 - mining_risk_common.dataplane.preprocessor - INFO - Pipeline 已从 artifacts/pipelines/preprocessing_pipeline.pkl 加载
+2026-05-23 23:41:45,464 - mining_risk_serve.agent.workflow - INFO - Workflow 输入字段标准化完成: mapped=[] defaulted_count=66
+2026-05-23 23:41:45,483 - mining_risk_common.model.stacking - INFO - 基学习器 multinomial_lr (logistic_regression) 已初始化
+2026-05-23 23:41:45,483 - mining_risk_common.model.stacking - INFO - 基学习器 xgboost (xgboost) 已初始化
+2026-05-23 23:41:45,483 - mining_risk_common.model.stacking - INFO - 基学习器 lightgbm (lightgbm) 已初始化
+2026-05-23 23:41:45,483 - mining_risk_common.model.stacking - INFO - 基学习器 catboost (catboost) 已初始化
+2026-05-23 23:41:45,483 - mining_risk_common.model.stacking - INFO - 基学习器 random_forest (random_forest) 已初始化
+2026-05-23 23:41:45,483 - mining_risk_common.model.stacking - INFO - 元学习器已初始化
+2026-05-23 23:41:45,513 - mining_risk_common.model.stacking - INFO - 模型已从 artifacts/models/stacking_risk_v1_stable.pkl 加载 (meta_fitted=True, base_learners=[multinomial_lr=LogisticRegression, xgboost=XGBClassifier, lightgbm=LGBMClassifier, catboost=CatBoostClassifier, random_forest=RandomForestClassifier])
+2026-05-23 23:41:45,636 - mining_risk_serve.harness.agentfs - INFO - AgentFS 数据库已初始化
+2026-05-23 23:41:45,739 - mining_risk_serve.harness.vector_store - INFO - 加载嵌入模型: BAAI/bge-large-zh-v1.5
+2026-05-23 23:41:56,792 - mining_risk_serve.harness.reranker - INFO - 加载重排序模型: BAAI/bge-reranker-large
+2026-05-23 23:42:39,418 - mining_risk_serve.llm.glm5_client - INFO - glm5 JSON 生成成功 (attempt 1)
+2026-05-23 23:42:39,430 - mining_risk_serve.harness.vector_store - INFO - 加载嵌入模型: BAAI/bge-large-zh-v1.5
+2026-05-23 23:42:51,447 - mining_risk_serve.harness.monte_carlo - INFO - 蒙特卡洛采样完成: 20/20 通过, 置信度 1.0000, 阈值 0.9, 状态 APPROVE
+2026-05-23 23:43:11,879 - mining_risk_common.dataplane.preprocessor - INFO - Pipeline 已从 artifacts/pipelines/preprocessing_pipeline.pkl 加载
+2026-05-23 23:43:11,879 - mining_risk_serve.agent.workflow - INFO - Workflow 输入字段标准化完成: mapped=[] defaulted_count=66
+2026-05-23 23:43:11,901 - mining_risk_common.model.stacking - INFO - 基学习器 multinomial_lr (logistic_regression) 已初始化
+2026-05-23 23:43:11,902 - mining_risk_common.model.stacking - INFO - 基学习器 xgboost (xgboost) 已初始化
+2026-05-23 23:43:11,902 - mining_risk_common.model.stacking - INFO - 基学习器 lightgbm (lightgbm) 已初始化
+2026-05-23 23:43:11,902 - mining_risk_common.model.stacking - INFO - 基学习器 catboost (catboost) 已初始化
+2026-05-23 23:43:11,902 - mining_risk_common.model.stacking - INFO - 基学习器 random_forest (random_forest) 已初始化
+2026-05-23 23:43:11,902 - mining_risk_common.model.stacking - INFO - 元学习器已初始化
+2026-05-23 23:43:11,925 - mining_risk_common.model.stacking - INFO - 模型已从 artifacts/models/stacking_risk_v1_stable.pkl 加载 (meta_fitted=True, base_learners=[multinomial_lr=LogisticRegression, xgboost=XGBClassifier, lightgbm=LGBMClassifier, catboost=CatBoostClassifier, random_forest=RandomForestClassifier])
+2026-05-23 23:43:12,011 - mining_risk_serve.harness.agentfs - INFO - AgentFS 数据库已初始化
+2026-05-23 23:43:12,090 - mining_risk_serve.harness.vector_store - INFO - 加载嵌入模型: BAAI/bge-large-zh-v1.5
+2026-05-23 23:43:20,392 - mining_risk_serve.harness.reranker - INFO - 加载重排序模型: BAAI/bge-reranker-large
+2026-05-23 23:44:09,301 - mining_risk_serve.llm.glm5_client - INFO - glm5 JSON 生成成功 (attempt 1)
+2026-05-23 23:44:09,313 - mining_risk_serve.harness.vector_store - INFO - 加载嵌入模型: BAAI/bge-large-zh-v1.5
+2026-05-23 23:44:20,830 - mining_risk_serve.harness.monte_carlo - INFO - 蒙特卡洛采样完成: 20/20 通过, 置信度 1.0000, 阈值 0.9, 状态 APPROVE
+2026-05-23 23:44:28,648 - mining_risk_common.dataplane.preprocessor - INFO - Pipeline 已从 artifacts/pipelines/preprocessing_pipeline.pkl 加载
+2026-05-23 23:44:28,648 - mining_risk_serve.agent.workflow - INFO - Workflow 输入字段标准化完成: mapped=[] defaulted_count=66
+2026-05-23 23:44:28,667 - mining_risk_common.model.stacking - INFO - 基学习器 multinomial_lr (logistic_regression) 已初始化
+2026-05-23 23:44:28,667 - mining_risk_common.model.stacking - INFO - 基学习器 xgboost (xgboost) 已初始化
+2026-05-23 23:44:28,667 - mining_risk_common.model.stacking - INFO - 基学习器 lightgbm (lightgbm) 已初始化
+2026-05-23 23:44:28,667 - mining_risk_common.model.stacking - INFO - 基学习器 catboost (catboost) 已初始化
+2026-05-23 23:44:28,667 - mining_risk_common.model.stacking - INFO - 基学习器 random_forest (random_forest) 已初始化
+2026-05-23 23:44:28,667 - mining_risk_common.model.stacking - INFO - 元学习器已初始化
+2026-05-23 23:44:28,685 - mining_risk_common.model.stacking - INFO - 模型已从 artifacts/models/stacking_risk_v1_stable.pkl 加载 (meta_fitted=True, base_learners=[multinomial_lr=LogisticRegression, xgboost=XGBClassifier, lightgbm=LGBMClassifier, catboost=CatBoostClassifier, random_forest=RandomForestClassifier])
+2026-05-23 23:44:28,755 - mining_risk_serve.harness.agentfs - INFO - AgentFS 数据库已初始化
+2026-05-23 23:44:28,826 - mining_risk_serve.harness.vector_store - INFO - 加载嵌入模型: BAAI/bge-large-zh-v1.5
+2026-05-23 23:44:39,817 - mining_risk_serve.harness.reranker - INFO - 加载重排序模型: BAAI/bge-reranker-large
+2026-05-23 23:45:32,759 - mining_risk_serve.llm.glm5_client - INFO - glm5 JSON 生成成功 (attempt 1)
+2026-05-23 23:45:32,780 - mining_risk_serve.harness.vector_store - INFO - 加载嵌入模型: BAAI/bge-large-zh-v1.5
+2026-05-23 23:45:44,503 - mining_risk_serve.harness.monte_carlo - INFO - 蒙特卡洛采样完成: 20/20 通过, 置信度 1.0000, 阈值 0.9, 状态 APPROVE

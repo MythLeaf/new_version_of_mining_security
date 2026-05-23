@@ -19,7 +19,7 @@ open http://localhost:8501
 
 | 服务 | 地址 | 说明 |
 |------|------|------|
-| React 前端 | http://localhost:8501 | 4 标签页 SCADA Dashboard |
+| React 前端 | http://localhost:8501 | 5 标签页 SCADA Dashboard（含数据可视化） |
 | Swagger（同源） | http://localhost:8501/docs | 经 Nginx 代理后端 |
 | FastAPI 直连 | http://localhost:8000/docs | 后端 API |
 | 健康检查 | http://localhost:8000/health | 服务状态 |
@@ -395,6 +395,7 @@ mining_risk_agent/
 | 标签页 | 功能 |
 |--------|------|
 | 企业风险预测 | 场景切换、上传/模拟数据、风险仪表盘、SHAP、决策卡片、SSE 日志 |
+| 数据可视化 | 预警趋势、相关性热力图、企业统计分布（读取 `datasets/raw/public`） |
 | 知识库与记忆 | 6 大知识库预览、P0–P3 短期记忆、长期 RAG 召回 |
 | 模型迭代 CI/CD | 版本时间线、审批流、灰度进度、模拟迭代动画 |
 | 系统配置 | LLM 连通性、场景参数、Swagger 链接 |
@@ -403,7 +404,7 @@ mining_risk_agent/
 
 **路演前检查**（1920×1080 全屏）：
 
-1. 四标签页切换无报错  
+1. 五标签页切换无报错  
 2. 模拟数据 → 执行预测，5 秒内出结果  
 3. 切换 chemical / metallurgy / dust，阈值与 `scenario_id` 变化  
 4. 知识库列表与记忆清理/RAG 召回  

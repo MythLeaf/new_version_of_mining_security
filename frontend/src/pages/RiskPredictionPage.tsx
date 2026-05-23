@@ -710,6 +710,7 @@ interface DecisionProps {
   decision: DecisionResponse;
   streamLog: NodeStatus[];
   mockSource?: MockSource;
+  inModal?: boolean;
 }
 
 export function DecisionView({ decision, streamLog, mockSource }: DecisionProps) {
