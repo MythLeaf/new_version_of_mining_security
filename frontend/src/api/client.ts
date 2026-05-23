@@ -513,6 +513,11 @@ export async function assessEnterpriseFile(
   message: string;
   filename: string;
   total_rows: number;
+  analyzed_rows?: number;
+  skipped_rows?: number;
+  experience_count?: number;
+  header_row_index?: number | null;
+  detected_columns?: string[];
   results: Array<{
     enterprise_id: string;
     enterprise_name: string;
