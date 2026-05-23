@@ -10836,3 +10836,4 @@ json.decoder.JSONDecodeError: Expecting ',' delimiter: line 1 column 16217556 (c
 2026-05-20 16:40:42,514 - mining_risk_serve.api.routers.memory - INFO - 持久化 audit_log 成功: 125 条
 2026-05-20 16:41:40,368 - mining_risk_serve.api.routers.memory - INFO - 持久化 long_term 成功: 47 条
 2026-05-20 16:41:40,372 - mining_risk_serve.api.routers.memory - INFO - 持久化 audit_log 成功: 126 条
+2026-05-20 16:43:09,480 - mining_risk_serve.api.main - INFO - 应用关闭
