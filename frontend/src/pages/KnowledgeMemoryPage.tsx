@@ -726,7 +726,15 @@ function ExcelImportSection() {
       const result = await assessEnterpriseFile(file);
       if (result?.success && result.results) {
         setResults(result.results);
-        setStatus(`✅ 完成 ${result.total_rows} 条数据预测分析，预警经验已自动生成`);
+        const analyzedRows = result.analyzed_rows ?? result.results.length;
+        const experienceCount = result.experience_count ?? result.results.length;
+        if (analyzedRows > 0) {
+          const totalHint = result.total_rows === analyzedRows ? "" : `（源文件 ${result.total_rows} 行）`;
+          setStatus(`✅ 完成 ${analyzedRows} 条数据预测分析${totalHint}，生成 ${experienceCount} 条预警经验`);
+        } else {
+          const columnsHint = result.detected_columns?.length ? `当前识别列：${result.detected_columns.slice(0, 8).join("、")}` : "未识别到明确表头";
+          setStatus(`⚠️ 已读取 ${result.total_rows} 行，但未识别到可评估企业记录。${columnsHint}`);
+        }
       } else {
         setStatus(`❌ 预测分析失败: ${result?.message || "未知错误"}`);
       }
@@ -783,6 +791,104 @@ function ExcelImportSection() {
     };
   }, [levelDistribution]);
 
+  const rankedResults = useMemo(() => [...results].sort((a, b) => b.risk_score - a.risk_score), [results]);
+
+  const riskStats = useMemo(() => {
+    const total = results.length;
+    const avgScore = total ? results.reduce((sum, r) => sum + r.risk_score, 0) / total : 0;
+    const highRiskCount = (levelDistribution["红"] || 0) + (levelDistribution["橙"] || 0);
+    const warningCount = highRiskCount + (levelDistribution["黄"] || 0);
+    return {
+      total,
+      avgScore,
+      highRiskCount,
+      warningRate: total ? warningCount / total : 0,
+      maxScore: rankedResults[0]?.risk_score ?? 0,
+      maxEnterprise: rankedResults[0]?.enterprise_name ?? "-",
+    };
+  }, [levelDistribution, rankedResults, results]);
+
+  const scoreBandOption = useMemo(() => {
+    const bands = [
+      { label: "0-0.2", min: 0, max: 0.2, color: "#38bdf8" },
+      { label: "0.2-0.4", min: 0.2, max: 0.4, color: "#3b82f6" },
+      { label: "0.4-0.6", min: 0.4, max: 0.6, color: "#eab308" },
+      { label: "0.6-0.8", min: 0.6, max: 0.8, color: "#f97316" },
+      { label: "0.8-1.0", min: 0.8, max: 1.01, color: "#ef4444" },
+    ];
+    const data = bands.map((band) => ({
+      value: results.filter((r) => r.risk_score >= band.min && r.risk_score < band.max).length,
+      itemStyle: { color: band.color },
+    }));
+    return {
+      backgroundColor: "transparent",
+      tooltip: { trigger: "axis" as const },
+      grid: { left: 42, right: 20, top: 25, bottom: 35 },
+      xAxis: { type: "category" as const, data: bands.map((b) => b.label), axisLabel: { color: "#94a3b8" } },
+      yAxis: { type: "value" as const, minInterval: 1, axisLabel: { color: "#94a3b8" }, splitLine: { lineStyle: { color: "#1e293b" } } },
+      series: [{ type: "bar" as const, data, barWidth: 24 }],
+    };
+  }, [results]);
+
+  const topRiskOption = useMemo(() => {
+    const chartRows = rankedResults.slice(0, 10).reverse();
+    return {
+      backgroundColor: "transparent",
+      tooltip: { trigger: "axis" as const },
+      grid: { left: 120, right: 30, top: 20, bottom: 30 },
+      xAxis: { type: "value" as const, min: 0, max: 1, axisLabel: { color: "#94a3b8" }, splitLine: { lineStyle: { color: "#1e293b" } } },
+      yAxis: { type: "category" as const, data: chartRows.map((r) => r.enterprise_name.slice(0, 12)), axisLabel: { color: "#94a3b8", fontSize: 10 } },
+      series: [{
+        type: "bar" as const,
+        data: chartRows.map((r) => ({ value: r.risk_score, itemStyle: { color: LEVEL_COLORS[r.risk_level] || "#3b82f6" } })),
+        label: { show: true, position: "right" as const, color: "#cbd5e1", formatter: "{c}" },
+      }],
+    };
+  }, [rankedResults]);
+
+  const factorAverages = useMemo(() => {
+    const acc: Record<string, { sum: number; count: number }> = {};
+    results.forEach((r) => {
+      r.key_factors.forEach((factor) => {
+        if (!acc[factor.name]) acc[factor.name] = { sum: 0, count: 0 };
+        acc[factor.name].sum += factor.value;
+        acc[factor.name].count += 1;
+      });
+    });
+    return Object.entries(acc).map(([name, stat]) => ({ name, value: stat.count ? stat.sum / stat.count : 0 }));
+  }, [results]);
+
+  const factorRadarOption = useMemo(() => ({
+    backgroundColor: "transparent",
+    tooltip: { trigger: "item" as const },
+    radar: {
+      indicator: factorAverages.map((f) => ({ name: f.name, max: 1 })),
+      axisName: { color: "#cbd5e1", fontSize: 11 },
+      splitLine: { lineStyle: { color: "#334155" } },
+      splitArea: { areaStyle: { color: ["rgba(15,23,42,0.3)", "rgba(30,41,59,0.2)"] } },
+      axisLine: { lineStyle: { color: "#334155" } },
+    },
+    series: [{
+      type: "radar" as const,
+      data: [{ value: factorAverages.map((f) => Number(f.value.toFixed(3))), name: "平均指标" }],
+      areaStyle: { color: "rgba(59,130,246,0.18)" },
+      lineStyle: { color: "#38bdf8", width: 2 },
+      itemStyle: { color: "#38bdf8" },
+    }],
+  }), [factorAverages]);
+
+  const scenarioDistribution = useMemo(() => {
+    const labels: Record<string, string> = { chemical: "危化品", metallurgy: "冶金", dust: "粉尘" };
+    const dist: Record<string, number> = {};
+    results.forEach((r) => {
+      const label = labels[r.scenario] || r.scenario || "未分类";
+      dist[label] = (dist[label] || 0) + 1;
+    });
+    return Object.entries(dist).sort((a, b) => b[1] - a[1]);
+  }, [results]);
+
+  const priorityRows = useMemo(() => rankedResults.slice(0, 10), [rankedResults]);
+
   return (
     <div>
       <div className="scada-card" style={{ marginBottom: 14 }}>
@@ -801,34 +907,107 @@ function ExcelImportSection() {
           <button className="scada-btn secondary" type="button" onClick={() => handleExport("long", "xlsx")}>📤 导出长期记忆</button>
           <button className="scada-btn secondary" type="button" onClick={() => handleExport("short", "csv")}>📤 导出短期记忆</button>
         </div>
-        {status && <div className={`alert ${status.includes("✅") ? "success" : status.includes("❌") ? "error" : "info"}`} style={{ marginTop: 10 }}>{status}</div>}
+        {status && <div className={`alert ${status.includes("✅") ? "success" : status.includes("❌") ? "error" : status.includes("⚠️") ? "warning" : "info"}`} style={{ marginTop: 10 }}>{status}</div>}
       </div>
+
+      {!loading && status.includes("⚠️") && results.length === 0 && (
+        <div className="scada-card">
+          <div className="empty-state">
+            <div className="empty-state-icon">📭</div>
+            <div>本次导入没有生成风险评估结果，因此不会渲染图表。</div>
+          </div>
+        </div>
+      )}
 
       {results.length > 0 && (
         <>
+          <div className="row cols-4" style={{ marginBottom: 14 }}>
+            {[
+              { label: "有效企业", value: riskStats.total.toLocaleString(), color: "#38bdf8" },
+              { label: "红橙风险", value: riskStats.highRiskCount.toLocaleString(), color: "#f97316" },
+              { label: "平均评分", value: riskStats.avgScore.toFixed(3), color: "#eab308" },
+              { label: "需关注占比", value: `${Math.round(riskStats.warningRate * 100)}%`, color: "#8b5cf6" },
+            ].map((item) => (
+              <div key={item.label} className="scada-card" style={{ textAlign: "center", padding: 16 }}>
+                <div style={{ fontSize: 26, fontWeight: 800, color: item.color, fontFamily: "JetBrains Mono" }}>{item.value}</div>
+                <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>{item.label}</div>
+              </div>
+            ))}
+          </div>
+
           <div className="row cols-2" style={{ marginBottom: 14 }}>
             <div className="scada-card">
               <div className="risk-report-title" style={{ marginBottom: 10 }}>📊 风险等级分布</div>
               <ReactECharts option={pieOption} style={{ height: 250 }} />
             </div>
             <div className="scada-card">
-              <div className="risk-report-title" style={{ marginBottom: 10 }}>📋 预测结果摘要</div>
-              <div style={{ fontSize: 13, lineHeight: 2 }}>
-                <div>总企业数: <b style={{ color: "#f1f5f9" }}>{results.length}</b></div>
-                <div style={{ color: "#ef4444" }}>红色预警: <b>{levelDistribution["红"]}</b> 家</div>
-                <div style={{ color: "#f97316" }}>橙色预警: <b>{levelDistribution["橙"]}</b> 家</div>
-                <div style={{ color: "#eab308" }}>黄色预警: <b>{levelDistribution["黄"]}</b> 家</div>
-                <div style={{ color: "#3b82f6" }}>蓝色预警: <b>{levelDistribution["蓝"]}</b> 家</div>
+              <div className="risk-report-title" style={{ marginBottom: 10 }}>📈 风险评分区间</div>
+              <ReactECharts option={scoreBandOption} style={{ height: 250 }} />
+            </div>
+          </div>
+
+          <div className="row cols-2" style={{ marginBottom: 14 }}>
+            <div className="scada-card">
+              <div className="risk-report-title" style={{ marginBottom: 10 }}>🏭 Top 10 风险企业</div>
+              <ReactECharts option={topRiskOption} style={{ height: 320 }} />
+            </div>
+            <div className="scada-card">
+              <div className="risk-report-title" style={{ marginBottom: 10 }}>🧭 关键风险因子均值</div>
+              <ReactECharts option={factorRadarOption} style={{ height: 320 }} />
+            </div>
+          </div>
+
+          <div className="row cols-2" style={{ marginBottom: 14 }}>
+            <div className="scada-card">
+              <div className="risk-report-title" style={{ marginBottom: 10 }}>🚨 重点关注处置清单</div>
+              <table className="scada-table">
+                <thead><tr><th>企业名称</th><th>评分</th><th>等级</th><th>建议动作</th></tr></thead>
+                <tbody>
+                  {priorityRows.map((r) => (
+                    <tr key={`${r.enterprise_id}-${r.enterprise_name}`} className={r.risk_level === "红" ? "risk-score-table-row-red" : r.risk_level === "橙" ? "risk-score-table-row-orange" : r.risk_level === "黄" ? "risk-score-table-row-yellow" : ""}>
+                      <td style={{ fontWeight: 600 }}>{r.enterprise_name}</td>
+                      <td className="font-mono" style={{ color: LEVEL_COLORS[r.risk_level], fontWeight: 700 }}>{r.risk_score.toFixed(4)}</td>
+                      <td><span className="tag" style={{ background: LEVEL_BG[r.risk_level], color: LEVEL_COLORS[r.risk_level], fontWeight: 700 }}>{r.risk_level}级</span></td>
+                      <td style={{ color: "#cbd5e1" }}>{r.risk_level === "红" ? "立即核查" : r.risk_level === "橙" ? "限期整改" : r.risk_level === "黄" ? "持续监测" : "常规巡检"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="scada-card">
+              <div className="risk-report-title" style={{ marginBottom: 10 }}>📋 场景与等级汇总</div>
+              <table className="scada-table">
+                <thead><tr><th>维度</th><th>数量</th><th>占比</th></tr></thead>
+                <tbody>
+                  {scenarioDistribution.map(([name, count]) => (
+                    <tr key={name}>
+                      <td>{name}</td>
+                      <td className="font-mono" style={{ color: "#38bdf8", fontWeight: 700 }}>{count}</td>
+                      <td className="font-mono">{Math.round((count / results.length) * 100)}%</td>
+                    </tr>
+                  ))}
+                  {Object.entries(levelDistribution).filter(([, count]) => count > 0).map(([name, count]) => (
+                    <tr key={name}>
+                      <td>{name}级预警</td>
+                      <td className="font-mono" style={{ color: LEVEL_COLORS[name], fontWeight: 700 }}>{count}</td>
+                      <td className="font-mono">{Math.round((count / results.length) * 100)}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div style={{ marginTop: 12, color: "#94a3b8", fontSize: 12 }}>
+                最高风险企业：<b style={{ color: "#f1f5f9" }}>{riskStats.maxEnterprise}</b>，评分 <b style={{ color: "#ef4444" }}>{riskStats.maxScore.toFixed(4)}</b>
               </div>
             </div>
           </div>
+
           <div className="scada-card">
-            <div className="risk-report-title" style={{ marginBottom: 10 }}>📋 详细预测结果（按名称长度排序）</div>
+            <div className="risk-report-title" style={{ marginBottom: 10 }}>📋 详细预测结果（按风险评分排序）</div>
             <table className="scada-table">
               <thead><tr><th>企业名称</th><th>风险评分</th><th>风险等级</th><th>场景</th><th>关键指标</th></tr></thead>
               <tbody>
-                {[...results].sort((a, b) => b.enterprise_name.length - a.enterprise_name.length).map((r, i) => (
-                  <tr key={i} className={r.risk_level === "红" ? "risk-score-table-row-red" : r.risk_level === "橙" ? "risk-score-table-row-orange" : ""}>
+                {rankedResults.map((r, i) => (
+                  <tr key={`${r.enterprise_id}-${i}`} className={r.risk_level === "红" ? "risk-score-table-row-red" : r.risk_level === "橙" ? "risk-score-table-row-orange" : r.risk_level === "黄" ? "risk-score-table-row-yellow" : ""}>
                     <td style={{ fontWeight: 600 }}>{r.enterprise_name}</td>
                     <td className="font-mono" style={{ fontWeight: 700, color: LEVEL_COLORS[r.risk_level] }}>{r.risk_score.toFixed(4)}</td>
                     <td><span className="tag" style={{ background: LEVEL_BG[r.risk_level], color: LEVEL_COLORS[r.risk_level], fontWeight: 700 }}>{r.risk_level}级</span></td>

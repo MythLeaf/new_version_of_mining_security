@@ -6,12 +6,15 @@
 """
 
 import asyncio
+import csv
 import glob
+import hashlib
 import io
 import json
 import math
 import os
 import random
+import re
 import threading
 import time
 import uuid
@@ -180,17 +183,9 @@ def _scan_new_data_dir() -> List[Dict[str, Any]]:
 
 
 def _load_file_to_df(fpath: str) -> Optional[pd.DataFrame]:
-    ext = Path(fpath).suffix.lower()
     try:
-        if ext in (".xlsx", ".xls"):
-            return pd.read_excel(fpath, engine="openpyxl" if ext == ".xlsx" else None)
-        elif ext == ".csv":
-            for enc in ("utf-8", "gbk", "gb2312", "latin-1"):
-                try:
-                    return pd.read_csv(fpath, encoding=enc)
-                except (UnicodeDecodeError, UnicodeError):
-                    continue
-            return pd.read_csv(fpath, encoding="utf-8", errors="replace")
+        with open(fpath, "rb") as f:
+            return _read_tabular_upload(f.read(), os.path.basename(fpath))
     except Exception as e:
         logger.error(f"读取文件失败 {fpath}: {e}")
     return None
@@ -239,6 +234,495 @@ def _df_to_long_term_entries(df: pd.DataFrame, source_file: str) -> List[Dict[st
         }
         entries.append(entry)
     return entries
+
+
+_ENTERPRISE_ID_KEYS = (
+    "企业ID", "企业id", "enterprise_id", "主键ID", "主键id", "主键Id",
+    "统一信用代码", "统一社会信用代码", "社会统一信用代码", "社会统一信用代码 主键",
+    "行政相对人代码", "行政相对人统一社会信用代码", "当事人证照号码", "企业编号",
+    "单位编号", "组织机构代码", "纳税人识别号", "主体代码", "社会信用代码",
+    "案件id", "案件ID", "请求的id", "请求的ID", "id", "ID",
+    "ENTERPRISE_ID", "ent_id", "company_id", "org_id", "credit_code", "UUIT_NO", "UUID", "uuid",
+)
+_ENTERPRISE_NAME_KEYS = (
+    "企业名称", "企业名称 ", "enterprise_name", "单位名称", "公司名称", "地址名称",
+    "企业全称", "单位全称", "公司全称", "企业简称", "单位简称",
+    "当事人", "当事人名称", "被处罚单位", "被处罚人", "处罚对象",
+    "行政相对人", "行政相对人名称", "生产经营单位", "企业（单位）名称",
+    "企业(单位)名称", "申请单位", "被检查单位", "被执法单位", "监管对象",
+    "市场主体名称", "经营主体名称", "法人单位", "主体名称", "单位",
+    "ENTERPRISE_NAME", "COMPANY_NAME", "BUSI_ADDR_NAME", "company_name",
+    "companyName", "ent_name", "entName", "org_name", "organization_name",
+    "business_name", "company", "enterprise", "organization", "name",
+)
+_GENERIC_NAME_KEYS = ("名称",)
+_CREDIT_KEYS = (
+    "统一信用代码", "统一社会信用代码", "社会统一信用代码", "社会统一信用代码 主键",
+    "行政相对人统一社会信用代码", "当事人证照号码", "社会信用代码", "信用代码",
+    "组织机构代码", "纳税人识别号", "credit_code", "UUIT_NO",
+)
+_CASE_NAME_KEYS = (
+    "案件名称", "案由", "事项名称", "违法事项", "标题", "名称",
+    "问题描述", "隐患描述", "检查内容", "事故概述", "违法行为", "处罚事由",
+    "处罚内容", "备注", "详情", "内容", "描述", "说明", "case_name",
+    "description", "detail", "summary", "memo",
+)
+_ENTERPRISE_SUFFIXES = (
+    "有限责任公司", "股份有限公司", "集团有限公司", "有限公司", "集团公司",
+    "分公司", "总公司", "公司", "工厂", "厂", "矿业", "矿", "煤矿",
+    "加油站", "经营部", "合作社", "中心", "商行", "门市部", "服务部",
+    "工作室", "项目部", "研究院", "设计院", "事务所", "医院", "学校", "店",
+)
+_ENTERPRISE_NAME_RE = re.compile(
+    r"([\u4e00-\u9fffA-Za-z0-9（）()·\-]{2,80}?"
+    r"(?:有限责任公司|股份有限公司|集团有限公司|有限公司|集团公司|分公司|总公司|公司|工厂|厂|矿业|煤矿|矿|加油站|经营部|合作社|中心|商行|门市部|服务部|工作室|项目部|研究院|设计院|事务所|医院|学校|店))"
+)
+
+
+def _normalize_column_name(value: Any) -> str:
+    return re.sub(r"[\s\ufeff_\-./\\()（）\[\]【】:：,，;；]+", "", str(value or "").strip()).lower()
+
+
+def _column_matches(column: Any, keys: tuple[str, ...]) -> bool:
+    normalized_column = _normalize_column_name(column)
+    if not normalized_column:
+        return False
+    exact_only = {"name", "company", "enterprise", "org", "organization", "unit"}
+    for key in keys:
+        normalized_key = _normalize_column_name(key)
+        if not normalized_key:
+            continue
+        if normalized_column == normalized_key:
+            return True
+        if normalized_key in exact_only:
+            continue
+        if (
+            len(normalized_key) >= 3
+            and len(normalized_column) >= 3
+            and (normalized_key in normalized_column or normalized_column in normalized_key)
+        ):
+            return True
+    return False
+
+
+def _first_non_empty(row_data: Dict[str, Any], keys: tuple[str, ...]) -> Optional[str]:
+    for key in keys:
+        val = row_data.get(key)
+        if val is not None and str(val).strip():
+            return str(val).strip()
+    normalized_keys = {key.strip() for key in keys}
+    for raw_key, val in row_data.items():
+        if str(raw_key).strip() in normalized_keys and val is not None and str(val).strip():
+            return str(val).strip()
+    for raw_key, val in row_data.items():
+        if _column_matches(raw_key, keys) and val is not None and str(val).strip():
+            return str(val).strip()
+    return None
+
+
+def _clean_enterprise_name(name: str) -> str:
+    return name.strip(" \t\r\n:：,，;；.。()（）[]【】\"'“”‘’")
+
+
+def _looks_like_possible_enterprise_value(name: Optional[str]) -> bool:
+    if not name:
+        return False
+    cleaned = _clean_enterprise_name(str(name))
+    if len(cleaned) < 2 or len(cleaned) > 120:
+        return False
+    if cleaned.lower() in {"nan", "none", "null", "true", "false", "yes", "no", "是", "否"}:
+        return False
+    if re.fullmatch(r"[\d\s./:_\-]+", cleaned):
+        return False
+    return True
+
+
+def _looks_like_enterprise_name(name: Optional[str]) -> bool:
+    if not name:
+        return False
+    cleaned = _clean_enterprise_name(name)
+    if len(cleaned) < 4 or re.match(r"^\d", cleaned):
+        return False
+    if any(token in cleaned for token in ("停产", "正常生产", "临时", "长期", "元旦", "春节", "日期", "时间")):
+        return False
+    matched_suffix = next((suffix for suffix in _ENTERPRISE_SUFFIXES if cleaned.endswith(suffix)), None)
+    if not matched_suffix:
+        return False
+    if matched_suffix in {"厂", "矿", "店", "中心"}:
+        chinese_count = len(re.findall(r"[\u4e00-\u9fff]", cleaned))
+        if chinese_count < 4:
+            return False
+    return True
+
+
+def _extract_enterprise_name_from_text(text: Optional[str]) -> Optional[str]:
+    if not text:
+        return None
+    matches = [_clean_enterprise_name(match) for match in _ENTERPRISE_NAME_RE.findall(str(text))]
+    matches = [match for match in matches if _looks_like_enterprise_name(match)]
+    if not matches:
+        return None
+    return max(matches, key=len)
+
+
+def _direct_enterprise_name_from_row(row_data: Dict[str, Any]) -> Optional[str]:
+    ent_name = _first_non_empty(row_data, _ENTERPRISE_NAME_KEYS)
+    if _looks_like_possible_enterprise_value(ent_name):
+        return _clean_enterprise_name(ent_name)
+
+    generic_name = _first_non_empty(row_data, _GENERIC_NAME_KEYS)
+    if _looks_like_enterprise_name(generic_name):
+        return _clean_enterprise_name(str(generic_name))
+
+    case_name = _first_non_empty(row_data, _CASE_NAME_KEYS)
+    ent_name = _extract_enterprise_name_from_text(case_name)
+    if ent_name:
+        return ent_name
+
+    row_text = " ".join(str(value) for value in row_data.values() if value is not None and str(value).strip())
+    return _extract_enterprise_name_from_text(row_text)
+
+
+def _infer_enterprise_identity(row_data: Dict[str, Any], row_index: int) -> tuple[str, Optional[str]]:
+    eid = _first_non_empty(row_data, _ENTERPRISE_ID_KEYS) or f"ROW-{row_index + 1}"
+    ent_name = _direct_enterprise_name_from_row(row_data)
+    if ent_name:
+        return eid, ent_name
+
+    lookup_id, lookup_name = _lookup_enterprise_name_from_row(row_data)
+    if lookup_name:
+        return lookup_id or eid, lookup_name
+    return eid, None
+
+
+def _is_placeholder_header(columns: List[Any]) -> bool:
+    usable = [str(column).strip() for column in columns if str(column).strip()]
+    return bool(usable) and all(re.fullmatch(r"(?i)column\d+|unnamed:\d+", column) for column in usable)
+
+
+def _deduplicate_columns(columns: List[Any]) -> List[str]:
+    seen: Dict[str, int] = {}
+    result: List[str] = []
+    for index, raw in enumerate(columns, start=1):
+        base = str(raw or "").strip().lstrip("\ufeff") or f"Column{index}"
+        count = seen.get(base, 0)
+        seen[base] = count + 1
+        result.append(base if count == 0 else f"{base}.{count}")
+    return result
+
+
+def _header_row_score(cells: List[Any]) -> int:
+    score = 0
+    usable = [str(cell).strip() for cell in cells if str(cell).strip()]
+    if not usable:
+        return -10
+    if _is_placeholder_header(usable):
+        return -5
+    for cell in usable:
+        if _column_matches(cell, _ENTERPRISE_NAME_KEYS):
+            score += 6
+        elif _column_matches(cell, _ENTERPRISE_ID_KEYS):
+            score += 4
+        elif _column_matches(cell, _CASE_NAME_KEYS):
+            score += 3
+        elif _normalize_column_name(cell) in {"时间", "日期", "金额", "等级", "地区", "行业", "地址", "状态"}:
+            score += 1
+    # 表头通常是短文本集合；一整行长叙述更像数据而不是表头。
+    if len(usable) <= 3 and sum(len(str(cell)) for cell in usable) > 180 and score < 6:
+        score -= 3
+    return score
+
+
+def _coerce_raw_table(raw_df: pd.DataFrame) -> pd.DataFrame:
+    if raw_df is None or raw_df.empty:
+        return pd.DataFrame()
+
+    raw_df = raw_df.dropna(how="all").copy()
+    if raw_df.empty:
+        return pd.DataFrame()
+
+    rows: List[List[Any]] = []
+    for _, row in raw_df.iterrows():
+        values = ["" if pd.isna(value) else value for value in row.tolist()]
+        if any(str(value).strip() for value in values):
+            rows.append(values)
+    if not rows:
+        return pd.DataFrame()
+
+    search_rows = rows[: min(len(rows), 10)]
+    best_index = max(range(len(search_rows)), key=lambda i: _header_row_score(search_rows[i]))
+    best_score = _header_row_score(search_rows[best_index])
+    header_index: Optional[int] = best_index if best_score >= 3 else None
+
+    if header_index is None:
+        max_width = max(len(row) for row in rows)
+        columns = [f"Column{i}" for i in range(1, max_width + 1)]
+        data_rows = rows
+    else:
+        columns = _deduplicate_columns(rows[header_index])
+        data_rows = rows[header_index + 1 :]
+
+    normalized_rows: List[List[Any]] = []
+    width = len(columns)
+    for row in data_rows:
+        padded = list(row[:width]) + [""] * max(0, width - len(row))
+        if any(str(value).strip() for value in padded):
+            normalized_rows.append(padded)
+
+    df = pd.DataFrame(normalized_rows, columns=columns)
+    df = df.dropna(how="all")
+    df.attrs["header_row_index"] = None if header_index is None else header_index + 1
+    df.attrs["detected_columns"] = columns
+    df.attrs["header_detection_score"] = best_score
+    return df
+
+
+_CSV_ENCODINGS = ("utf-8-sig", "utf-8", "gb18030", "gbk", "gb2312", "latin-1")
+
+
+def _decode_csv_text(content: bytes) -> tuple[str, str]:
+    last_error: Optional[Exception] = None
+    for enc in _CSV_ENCODINGS:
+        try:
+            return content.decode(enc), enc
+        except UnicodeDecodeError as exc:
+            last_error = exc
+            continue
+    if last_error:
+        logger.warning(f"CSV编码无法精确识别，使用替换模式解析: {last_error}")
+    return content.decode("utf-8", errors="replace"), "utf-8-replace"
+
+
+def _read_csv_rows(content: bytes) -> pd.DataFrame:
+    text, _encoding = _decode_csv_text(content)
+    text = text.replace("\x00", "")
+    if not text.strip():
+        return pd.DataFrame()
+
+    sample = "\n".join(text.splitlines()[:30])
+    try:
+        dialect = csv.Sniffer().sniff(sample, delimiters=",\t;|")
+    except csv.Error:
+        dialect = csv.excel
+
+    rows = list(csv.reader(io.StringIO(text), dialect))
+    non_empty_rows = [row for row in rows if any(str(cell).strip() for cell in row)]
+
+    if non_empty_rows and all(len(row) == 1 for row in non_empty_rows[:20]):
+        # Sniffer 对单列 CSV / 纯文本经常无法判断；保留每一行为一条记录。
+        rows = [[line] for line in text.splitlines() if line.strip()]
+    elif not non_empty_rows and text.strip():
+        rows = [[line] for line in text.splitlines() if line.strip()]
+
+    if not rows:
+        return pd.DataFrame()
+
+    max_width = max(len(row) for row in rows)
+    normalized_rows = [list(row) + [""] * (max_width - len(row)) for row in rows]
+    return pd.DataFrame(normalized_rows)
+
+
+def _read_tabular_upload(content: bytes, filename: str) -> pd.DataFrame:
+    ext = Path(filename).suffix.lower()
+    if ext in (".xlsx", ".xls"):
+        engine = "openpyxl" if ext == ".xlsx" else "xlrd"
+        try:
+            raw = pd.read_excel(io.BytesIO(content), engine=engine, header=None, dtype=object)
+        except Exception:
+            alt_engine = "xlrd" if ext == ".xlsx" else "openpyxl"
+            try:
+                raw = pd.read_excel(io.BytesIO(content), engine=alt_engine, header=None, dtype=object)
+            except Exception as e2:
+                raise ValueError(f"无法读取Excel文件: {e2}") from e2
+        return _coerce_raw_table(raw)
+
+    if ext == ".csv":
+        try:
+            return _coerce_raw_table(_read_csv_rows(content))
+        except (csv.Error, UnicodeError, ValueError) as exc:
+            raise ValueError(f"无法读取CSV文件: {exc}") from exc
+
+    raise ValueError(f"不支持的文件格式: {ext}")
+
+
+_ENTERPRISE_LOOKUP_KEYS = tuple(dict.fromkeys(
+    _ENTERPRISE_ID_KEYS
+    + _CREDIT_KEYS
+    + (
+        "主键", "主键ID", "主键id", "主键Id",
+        "企业历史id", "企业历史ID", "企业历史Id", "enterprise_history_id", "ent_history_id",
+        "报告历史ID", "报告历史id", "报告历史Id", "REPORT_HISTORY_ID", "report_history_id",
+        "检查主键ID", "检查主键id", "检查主键Id", "检查主键", "routine_check_id",
+        "案件id", "案件ID", "立案id", "立案ID", "立案对象id", "立案对象ID", "case_id", "la_id",
+        "来源id", "来源ID", "业务id", "业务ID", "source_id", "biz_id",
+        "文书记录id", "文书记录ID", "writ_id", "writId", "writid",
+    )
+))
+_enterprise_name_index: Dict[str, str] = {}
+_enterprise_name_index_loaded = False
+_ENTERPRISE_INDEX_MAX_ROWS_PER_FILE = 5000
+_ENTERPRISE_INDEX_FILE_HINTS = (
+    "st_ds_aczf_enterprise",
+    "st_enterprise_directory",
+    "enterprise_routine_check_log",
+    "szs_business_address",
+    "szs_enterprise_risk_history",
+    "szs_enterprise_dust_clear_record",
+    "ds_aczf_penalty_disc",
+    "ds_aczf_penalty_illage",
+    "ds_aczf_writ_detail",
+)
+
+
+def _normalize_lookup_value(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    text = str(value).strip().lstrip("\ufeff")
+    if not text:
+        return None
+    lower = text.lower()
+    if lower in {"nan", "none", "null", "true", "false", "yes", "no", "是", "否"}:
+        return None
+    if re.fullmatch(r"\d+\.0+", text):
+        text = text.split(".", 1)[0]
+    if len(text) < 4:
+        return None
+    return text.upper()
+
+
+def _row_to_str_dict(row: pd.Series, columns: List[str]) -> Dict[str, str]:
+    row_data: Dict[str, str] = {}
+    for col in columns:
+        val = row.get(col)
+        if pd.notna(val) and str(val).strip():
+            row_data[str(col)] = str(val).strip()
+    return row_data
+
+
+def _collect_enterprise_name_index_from_df(df: pd.DataFrame) -> Dict[str, str]:
+    index: Dict[str, str] = {}
+    if df is None or df.empty:
+        return index
+    cols = [str(col) for col in df.columns]
+    for _, row in df.head(_ENTERPRISE_INDEX_MAX_ROWS_PER_FILE).iterrows():
+        row_data = _row_to_str_dict(row, cols)
+        ent_name = _direct_enterprise_name_from_row(row_data)
+        if not ent_name:
+            continue
+        for raw_key, raw_value in row_data.items():
+            if not _column_matches(raw_key, _ENTERPRISE_LOOKUP_KEYS):
+                continue
+            lookup_key = _normalize_lookup_value(raw_value)
+            if lookup_key and lookup_key not in index:
+                index[lookup_key] = ent_name
+    return index
+
+
+def _ensure_enterprise_name_index() -> None:
+    global _enterprise_name_index_loaded
+    if _enterprise_name_index_loaded:
+        return
+
+    merged: Dict[str, str] = {}
+    for finfo in _scan_new_data_dir():
+        if finfo.get("ext") != ".csv":
+            continue
+        rel_path = str(finfo.get("rel_path", "")).lower()
+        if not any(hint in rel_path for hint in _ENTERPRISE_INDEX_FILE_HINTS):
+            continue
+        try:
+            df = _load_file_to_df(finfo["abs_path"])
+            merged.update(_collect_enterprise_name_index_from_df(df))
+        except Exception as exc:
+            logger.debug(f"构建企业名称索引跳过文件 {finfo.get('rel_path')}: {exc}")
+
+    _enterprise_name_index.clear()
+    _enterprise_name_index.update(merged)
+    _enterprise_name_index_loaded = True
+    logger.info(f"企业名称索引已加载: {len(_enterprise_name_index)} 个标识")
+
+
+def _lookup_enterprise_name_from_row(row_data: Dict[str, Any]) -> tuple[Optional[str], Optional[str]]:
+    _ensure_enterprise_name_index()
+    for raw_key, raw_value in row_data.items():
+        if not _column_matches(raw_key, _ENTERPRISE_LOOKUP_KEYS):
+            continue
+        lookup_key = _normalize_lookup_value(raw_value)
+        if lookup_key and lookup_key in _enterprise_name_index:
+            return str(raw_value).strip(), _enterprise_name_index[lookup_key]
+    return None, None
+
+
+def _keyword_hits(text: str, keywords: tuple[str, ...]) -> int:
+    return sum(1 for keyword in keywords if keyword in text)
+
+
+def _stable_jitter(seed_text: str, spread: float = 0.03) -> float:
+    digest = hashlib.sha256(seed_text.encode("utf-8", errors="ignore")).digest()
+    ratio = digest[0] / 255
+    return (ratio - 0.5) * spread
+
+
+def _risk_level_from_score(score: float) -> str:
+    return "红" if score >= 0.8 else "橙" if score >= 0.6 else "黄" if score >= 0.4 else "蓝"
+
+
+def _infer_scenario_from_text(text: str) -> str:
+    if any(token in text for token in ("冶金", "钢铁", "高炉", "炼钢", "金属冶炼")):
+        return "metallurgy"
+    if any(token in text for token in ("粉尘", "木业", "铝镁", "除尘", "涉爆粉尘")):
+        return "dust"
+    return "chemical"
+
+
+def _assess_risk_from_rows(rows: List[Dict[str, Any]], seed: str = "") -> Dict[str, Any]:
+    text = json.dumps(rows, ensure_ascii=False)
+    severe_hits = _keyword_hits(text, (
+        "死亡", "较大事故", "重大事故", "爆炸", "火灾", "中毒", "窒息", "泄漏", "坍塌", "触电",
+    ))
+    hazard_hits = _keyword_hits(text, (
+        "危险化学品", "危险物品", "危化品", "危险作业", "有限空间", "动火", "粉尘",
+        "燃气", "特种作业", "高处作业", "不具备安全生产条件",
+    ))
+    critical_management_hits = _keyword_hits(text, (
+        "未采取可靠的安全措施", "未建立专门安全管理制度", "不具备安全生产条件",
+        "危险作业未按照规定", "未履行职责", "未配备安全生产管理人员",
+    ))
+    management_hits = _keyword_hits(text, (
+        "未建立", "未采取", "未按照规定", "未履行", "未签订", "未统一协调",
+        "未如实记录", "未通报", "未培训", "未经", "无证", "未配备", "未制定",
+    ))
+    enforcement_hits = _keyword_hits(text, (
+        "违法", "处罚", "罚款", "责令", "整改", "行政处罚", "停产", "停业", "吊销",
+    ))
+
+    hazard_value = min(0.95, 0.16 + severe_hits * 0.35 + hazard_hits * 0.20)
+    management_value = min(0.95, 0.18 + management_hits * 0.08 + critical_management_hits * 0.14)
+    incident_value = min(0.95, 0.10 + severe_hits * 0.32 + (0.12 if "事故隐患" in text else 0) + (0.06 if "事故" in text else 0))
+    enforcement_value = min(0.95, 0.18 + enforcement_hits * 0.06 + (0.22 if "停产" in text or "停业" in text else 0))
+    combo_boost = 0.07 if hazard_hits > 0 and critical_management_hits > 0 else 0
+
+    risk_score = (
+        0.22
+        + hazard_value * 0.35
+        + management_value * 0.30
+        + incident_value * 0.20
+        + enforcement_value * 0.15
+        + combo_boost
+        + _stable_jitter(seed or text)
+    )
+    risk_score = round(max(0.12, min(0.95, risk_score)), 4)
+    return {
+        "risk_score": risk_score,
+        "risk_level": _risk_level_from_score(risk_score),
+        "scenario": _infer_scenario_from_text(text),
+        "key_factors": [
+            {"name": "危险源暴露", "value": round(hazard_value, 3), "color": "#ef4444"},
+            {"name": "安全管理缺口", "value": round(management_value, 3), "color": "#f97316"},
+            {"name": "事故隐患信号", "value": round(incident_value, 3), "color": "#f59e0b"},
+            {"name": "执法整改压力", "value": round(enforcement_value, 3), "color": "#3b82f6"},
+        ],
+    }
 
 
 def _generate_warning_experience(assessment_result: Dict[str, Any]) -> Dict[str, Any]:
@@ -560,28 +1044,9 @@ async def import_excel_file(file: UploadFile = File(...)) -> ExcelUploadResponse
         fname = file.filename or "uploaded.xlsx"
         ext = Path(fname).suffix.lower()
         logger.info(f"开始导入文件: {fname}, 大小: {len(content)} bytes, 格式: {ext}")
-        df = None
-        if ext in (".xlsx", ".xls"):
-            engine = "openpyxl" if ext == ".xlsx" else "xlrd"
-            try:
-                df = pd.read_excel(io.BytesIO(content), engine=engine)
-            except Exception:
-                alt_engine = "xlrd" if ext == ".xlsx" else "openpyxl"
-                try:
-                    df = pd.read_excel(io.BytesIO(content), engine=alt_engine)
-                except Exception as e2:
-                    raise ValueError(f"无法读取Excel文件: {e2}")
-        elif ext == ".csv":
-            for enc in ("utf-8-sig", "utf-8", "gbk", "gb2312", "gb18030", "latin-1"):
-                try:
-                    df = pd.read_csv(io.BytesIO(content), encoding=enc)
-                    break
-                except (UnicodeDecodeError, UnicodeError):
-                    continue
-            else:
-                df = pd.read_csv(io.BytesIO(content), encoding="utf-8", errors="replace")
-        else:
+        if ext not in (".xlsx", ".xls", ".csv"):
             return ExcelUploadResponse(success=False, message=f"不支持的文件格式: {ext}", filename=fname)
+        df = _read_tabular_upload(content, fname)
         if df is None or df.empty:
             return ExcelUploadResponse(success=False, message="文件内容为空或无法解析", filename=fname, rows=0, columns=0)
         _enterprise_data_cache[fname] = df
@@ -612,11 +1077,9 @@ async def enterprise_data_summary() -> Dict[str, Any]:
     enterprises = set()
     for e in row_entries:
         rd = e.get("row_data", {})
-        for key in ("企业名称", "企业名称 ", "enterprise_name", "单位名称", "公司名称",
-                     "ENTERPRISE_NAME", "COMPANY_NAME", "BUSI_ADDR_NAME"):
-            if key in rd:
-                enterprises.add(rd[key])
-                break
+        name = _first_non_empty(rd, _ENTERPRISE_NAME_KEYS)
+        if name:
+            enterprises.add(name)
     return {
         "total_entries": len(data_entries),
         "table_count": len(table_entries),
@@ -632,31 +1095,14 @@ async def batch_risk_assessment() -> BatchAssessResponse:
     if not data_entries:
         return BatchAssessResponse(success=False, message="长期记忆库中无企业数据，请先导入数据")
 
-    _EID_KEYS = ("企业ID", "企业id", "enterprise_id", "主键ID", "主键id", "主键Id",
-                 "统一信用代码", "统一社会信用代码", "社会统一信用代码", "社会统一信用代码 主键",
-                 "ENTERPRISE_ID", "UUIT_NO")
-    _ENAME_KEYS = ("企业名称", "企业名称 ", "enterprise_name", "单位名称", "公司名称", "地址名称",
-                   "ENTERPRISE_NAME", "COMPANY_NAME", "BUSI_ADDR_NAME")
-    _CREDIT_KEYS = ("统一信用代码", "统一社会信用代码", "社会统一信用代码", "社会统一信用代码 主键",
-                    "UUIT_NO")
-
     credit_to_name: Dict[str, str] = {}
     for e in data_entries:
         rd = e.get("row_data", {})
-        name_val = None
-        name_found = False
-        for k in _ENAME_KEYS:
-            if k in rd and str(rd[k]).strip():
-                name_val = str(rd[k]).strip()
-                name_found = True
-                break
+        name_val = _first_non_empty(rd, _ENTERPRISE_NAME_KEYS)
         if not name_val:
             continue
-        credit_val = None
-        for k in _CREDIT_KEYS:
-            if k in rd and str(rd[k]).strip():
-                credit_val = str(rd[k]).strip()
-                break
+        name_val = _clean_enterprise_name(name_val)
+        credit_val = _first_non_empty(rd, _CREDIT_KEYS)
         if credit_val:
             credit_to_name[credit_val] = name_val
 
@@ -664,20 +1110,13 @@ async def batch_risk_assessment() -> BatchAssessResponse:
     eid_credit_map: Dict[str, str] = {}
     for e in data_entries:
         rd = e.get("row_data", {})
-        eid = None
-        for key in _EID_KEYS:
-            if key in rd and str(rd[key]).strip():
-                eid = str(rd[key]).strip()
-                break
-        if not eid:
-            eid = e.get("enterprise_id", "unknown")
+        eid = _first_non_empty(rd, _ENTERPRISE_ID_KEYS) or e.get("enterprise_id", "unknown")
         if eid not in enterprise_map:
             enterprise_map[eid] = []
         enterprise_map[eid].append(e)
-        for k in _CREDIT_KEYS:
-            if k in rd and str(rd[k]).strip():
-                eid_credit_map[eid] = str(rd[k]).strip()
-                break
+        credit = _first_non_empty(rd, _CREDIT_KEYS)
+        if credit:
+            eid_credit_map[eid] = credit
 
     results = []
     inference_entries = []
@@ -690,11 +1129,10 @@ async def batch_risk_assessment() -> BatchAssessResponse:
         name_found = False
         for e in entries:
             rd = e.get("row_data", {})
-            for key in _ENAME_KEYS:
-                if key in rd and str(rd[key]).strip():
-                    ent_name = str(rd[key]).strip()
-                    name_found = True
-                    break
+            name_val = _first_non_empty(rd, _ENTERPRISE_NAME_KEYS)
+            if name_val:
+                ent_name = _clean_enterprise_name(name_val)
+                name_found = True
             if name_found:
                 break
         if not name_found or ent_name == eid:
@@ -706,7 +1144,8 @@ async def batch_risk_assessment() -> BatchAssessResponse:
                 ent_name = credit_to_name[eid]
                 name_found = True
         if not name_found:
-            ent_name = eid
+            case_name = _first_non_empty(entries[0].get("row_data", {}), _CASE_NAME_KEYS)
+            ent_name = _extract_enterprise_name_from_text(case_name) or ""
         if ent_name not in name_to_entries:
             name_to_entries[ent_name] = []
         name_to_entries[ent_name].extend(entries)
@@ -716,26 +1155,15 @@ async def batch_risk_assessment() -> BatchAssessResponse:
     for ent_name, entries in name_to_entries.items():
         eid = name_to_eid.get(ent_name, "unknown")
 
-        if ent_name == eid or not ent_name or ent_name in ("unknown", ""):
+        if not ent_name or ent_name in ("unknown", ""):
             continue
 
-        risk_score = round(random.uniform(0.15, 0.95), 4)
-        risk_level = "红" if risk_score >= 0.8 else "橙" if risk_score >= 0.6 else "黄" if risk_score >= 0.4 else "蓝"
-        scenario = "chemical"
-        for e in entries:
-            rd = e.get("row_data", {})
-            industry = str(rd.get("行业类别", rd.get("行业", rd.get("行业监管分类-大类名称", rd.get("行业监管分类-大类", "")))))
-            if "冶金" in industry or "钢铁" in industry:
-                scenario = "metallurgy"
-            elif "粉尘" in industry or "木业" in industry or "铝镁" in industry:
-                scenario = "dust"
-
-        key_factors = [
-            {"name": "可燃气体浓度", "value": round(random.uniform(0.1, 0.9), 3), "color": "#ef4444"},
-            {"name": "通风系统状态", "value": round(random.uniform(0.1, 0.8), 3), "color": "#f97316"},
-            {"name": "消防设施完好率", "value": round(random.uniform(0.2, 0.7), 3), "color": "#f59e0b"},
-            {"name": "安全管理评分", "value": round(random.uniform(0.1, 0.6), 3), "color": "#3b82f6"},
-        ]
+        row_datas = [e.get("row_data", {}) for e in entries if e.get("row_data")]
+        risk_assessment = _assess_risk_from_rows(row_datas, seed=f"{eid}:{ent_name}")
+        risk_score = risk_assessment["risk_score"]
+        risk_level = risk_assessment["risk_level"]
+        scenario = risk_assessment["scenario"]
+        key_factors = risk_assessment["key_factors"]
 
         assessment_result = {
             "enterprise_id": eid,
@@ -832,28 +1260,9 @@ async def assess_single_enterprise(file: UploadFile = File(...)) -> Dict[str, An
         ext = Path(fname).suffix.lower()
         logger.info(f"开始预测分析文件: {fname}, 大小: {len(content)} bytes, 格式: {ext}")
 
-        df = None
-        if ext in (".xlsx", ".xls"):
-            engine = "openpyxl" if ext == ".xlsx" else "xlrd"
-            try:
-                df = pd.read_excel(io.BytesIO(content), engine=engine)
-            except Exception:
-                alt_engine = "xlrd" if ext == ".xlsx" else "openpyxl"
-                try:
-                    df = pd.read_excel(io.BytesIO(content), engine=alt_engine)
-                except Exception as e2:
-                    raise ValueError(f"无法读取Excel文件: {e2}")
-        elif ext == ".csv":
-            for enc in ("utf-8-sig", "utf-8", "gbk", "gb2312", "gb18030", "latin-1"):
-                try:
-                    df = pd.read_csv(io.BytesIO(content), encoding=enc)
-                    break
-                except (UnicodeDecodeError, UnicodeError):
-                    continue
-            else:
-                df = pd.read_csv(io.BytesIO(content), encoding="utf-8", errors="replace")
-        else:
+        if ext not in (".xlsx", ".xls", ".csv"):
             raise HTTPException(status_code=400, detail=f"不支持的文件格式: {ext}")
+        df = _read_tabular_upload(content, fname)
 
         if df is None or df.empty:
             raise HTTPException(status_code=400, detail="文件内容为空或无法解析")
@@ -863,7 +1272,7 @@ async def assess_single_enterprise(file: UploadFile = File(...)) -> Dict[str, An
 
         results = []
         experience_count = 0
-        max_rows = min(len(df), 50)
+        max_rows = min(len(df), 300)
         name_assess_map: Dict[str, Dict] = {}
         for idx in range(max_rows):
             row = df.iloc[idx]
@@ -873,51 +1282,18 @@ async def assess_single_enterprise(file: UploadFile = File(...)) -> Dict[str, An
                 if pd.notna(val):
                     row_data[str(col)] = str(val)
 
-            _SE_EID_KEYS = ("企业ID", "企业id", "主键ID", "主键id", "主键Id",
-                            "统一信用代码", "统一社会信用代码", "社会统一信用代码", "社会统一信用代码 主键",
-                            "ENTERPRISE_ID", "UUIT_NO")
-            _SE_ENAME_KEYS = ("企业名称", "企业名称 ", "单位名称", "公司名称", "地址名称",
-                              "ENTERPRISE_NAME", "COMPANY_NAME", "BUSI_ADDR_NAME")
-            _SE_CREDIT_KEYS = ("统一信用代码", "统一社会信用代码", "社会统一信用代码", "社会统一信用代码 主键",
-                               "UUIT_NO")
-
-            eid = f"ROW-{idx}"
-            for k in _SE_EID_KEYS:
-                if k in row_data and str(row_data[k]).strip():
-                    eid = str(row_data[k]).strip()
-                    break
-
-            ent_name = eid
-            name_found = False
-            for k in _SE_ENAME_KEYS:
-                if k in row_data and str(row_data[k]).strip():
-                    ent_name = str(row_data[k]).strip()
-                    name_found = True
-                    break
-            if not name_found:
-                ent_name = eid
-
-            if ent_name == eid or not ent_name or not name_found:
+            eid, ent_name = _infer_enterprise_identity(row_data, idx)
+            if not ent_name:
                 continue
 
             if ent_name in name_assess_map:
                 continue
 
-            risk_score = round(random.uniform(0.15, 0.95), 4)
-            risk_level = "红" if risk_score >= 0.8 else "橙" if risk_score >= 0.6 else "黄" if risk_score >= 0.4 else "蓝"
-            scenario = "chemical"
-            industry = str(row_data.get("行业类别", row_data.get("行业", row_data.get("行业监管分类-大类名称", row_data.get("行业监管分类-大类", "")))))
-            if "冶金" in industry or "钢铁" in industry:
-                scenario = "metallurgy"
-            elif "粉尘" in industry or "木业" in industry or "铝镁" in industry:
-                scenario = "dust"
-
-            key_factors = [
-                {"name": "可燃气体浓度", "value": round(random.uniform(0.1, 0.9), 3), "color": "#ef4444"},
-                {"name": "通风系统状态", "value": round(random.uniform(0.1, 0.8), 3), "color": "#f97316"},
-                {"name": "消防设施完好率", "value": round(random.uniform(0.2, 0.7), 3), "color": "#f59e0b"},
-                {"name": "安全管理评分", "value": round(random.uniform(0.1, 0.6), 3), "color": "#3b82f6"},
-            ]
+            risk_assessment = _assess_risk_from_rows([row_data], seed=f"{eid}:{ent_name}")
+            risk_score = risk_assessment["risk_score"]
+            risk_level = risk_assessment["risk_level"]
+            scenario = risk_assessment["scenario"]
+            key_factors = risk_assessment["key_factors"]
 
             assessment_result = {
                 "enterprise_id": eid,
@@ -1017,6 +1393,10 @@ async def assess_single_enterprise(file: UploadFile = File(...)) -> Dict[str, An
             "message": f"完成 {len(results)} 条企业数据预测分析，生成 {experience_count} 条预警经验",
             "filename": fname,
             "total_rows": len(df),
+            "analyzed_rows": len(results),
+            "skipped_rows": max(len(df) - len(results), 0),
+            "header_row_index": df.attrs.get("header_row_index"),
+            "detected_columns": df.attrs.get("detected_columns", list(df.columns)),
             "results": results,
             "experience_count": experience_count,
         })

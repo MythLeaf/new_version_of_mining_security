@@ -13,9 +13,9 @@ htmlcov/
 
 # Runtime data
 logs/*.log
-data/*.db
-data/chroma_db/
-data
+/data/*
+!/data/
+!/data/*.py
 # Training intermediates
 catboost_info/
 
@@ -24,6 +24,7 @@ frontend/node_modules/
 frontend/dist/
 frontend/dist-tsbuild-node/
 frontend/.vite/
+frontend/.vite-cache/
 frontend/*.tsbuildinfo
 
 # OS files
