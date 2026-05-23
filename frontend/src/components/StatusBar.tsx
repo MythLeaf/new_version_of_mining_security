@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
-import type { HealthResponse } from "../api/types";
+import type { HealthResponse, ScenarioId } from "../api/types";
+import { SCENARIO_NAMES } from "../data/demoData";
 
 interface Props {
   health: HealthResponse | null;
-  scenarioName: string;
+  scenario: ScenarioId;
+  onScenarioChange: (scenario: ScenarioId) => void;
 }
 
-export default function StatusBar({ health, scenarioName }: Props) {
+export default function StatusBar({ health, scenario, onScenarioChange }: Props) {
   const [now, setNow] = useState(new Date());
 
   useEffect(() => {
@@ -19,7 +21,7 @@ export default function StatusBar({ health, scenarioName }: Props) {
   const dot = online ? "online" : "offline";
   const version = health?.version ?? "—";
   const time = now.toLocaleTimeString("zh-CN", { hour12: false });
-  const sceneNames = ["危险化学品", "冶金", "粉尘涉爆"];
+  const scenes = Object.entries(SCENARIO_NAMES) as Array<[ScenarioId, string]>;
 
   return (
     <div className="system-status-bar">
@@ -30,14 +32,16 @@ export default function StatusBar({ health, scenarioName }: Props) {
           <div className="brand-subtitle font-mono">SECURITY CENTER</div>
         </div>
       </div>
-      <nav className="top-scenario-nav" aria-label="场景导航">
-        {sceneNames.map((name) => (
-          <span
-            key={name}
-            className={`top-scenario-item ${scenarioName === name ? "active" : ""}`}
+      <nav className="top-scenario-nav" aria-label="场景模式切换">
+        {scenes.map(([id, name]) => (
+          <button
+            key={id}
+            type="button"
+            className={`top-scenario-item ${scenario === id ? "active" : ""}`}
+            onClick={() => onScenarioChange(id)}
           >
             {name}
-          </span>
+          </button>
         ))}
       </nav>
       <div className="top-search" aria-hidden="true">

@@ -1,5 +1,6 @@
 @echo off
 chcp 65001 >nul
+set CI=true
 echo Starting frontend Vite dev server on http://localhost:5173 ...
 echo.
 cd /d "%~dp0frontend"

@@ -158,21 +158,25 @@ export default function KnowledgeMemoryPage() {
 
   return (
     <div>
-      <div className="section-title">📚 预警经验管理系统</div>
+      <div className="section-title">
+        <span className="section-title-icon font-mono">▧</span>
+        预警经验管理系统
+      </div>
       <div className="sub-tab-bar">
         {[
-          { key: "overview" as const, label: "📊 总览仪表盘" },
-          { key: "data" as const, label: "📊 数据管理" },
-          { key: "risk" as const, label: "🎯 风险评估" },
-          { key: "import" as const, label: "📥 导入预测" },
-          { key: "experience" as const, label: "⚡ 预警经验" },
-          { key: "short" as const, label: "🧠 短期记忆" },
-          { key: "long" as const, label: "💾 长期记忆" },
-          { key: "approval" as const, label: "📋 审批管理" },
-          { key: "audit" as const, label: "🔍 审计日志" },
+          { key: "overview" as const, icon: "◎", label: "总览仪表盘" },
+          { key: "data" as const, icon: "▥", label: "数据管理" },
+          { key: "risk" as const, icon: "◉", label: "风险评估" },
+          { key: "import" as const, icon: "⇩", label: "导入预测" },
+          { key: "experience" as const, icon: "!", label: "预警经验" },
+          { key: "short" as const, icon: "▤", label: "短期记忆" },
+          { key: "long" as const, icon: "▣", label: "长期记忆" },
+          { key: "approval" as const, icon: "☑", label: "审批管理" },
+          { key: "audit" as const, icon: "⌕", label: "审计日志" },
         ].map((t) => (
           <button key={t.key} type="button" className={`sub-tab ${activeSection === t.key ? "active" : ""}`} onClick={() => setActiveSection(t.key)}>
-            {t.label}
+            <span className="sub-tab-icon font-mono">{t.icon}</span>
+            <span>{t.label}</span>
           </button>
         ))}
       </div>
@@ -365,7 +369,7 @@ function OverviewDashboard() {
     <div>
       <div className="scada-card" style={{ marginBottom: 14 }}>
         <div className="risk-report-header">
-          <div className="risk-report-title">📊 记忆系统总览仪表盘</div>
+          <div className="risk-report-title">OV 记忆系统总览仪表盘</div>
           <button className="scada-btn secondary" type="button" onClick={loadStats} disabled={loading}>🔄 刷新</button>
         </div>
       </div>
@@ -374,15 +378,15 @@ function OverviewDashboard() {
         <>
           <div className="row cols-4" style={{ marginBottom: 14 }}>
             <StatCard value={grandTotal} label="记忆总量" color="#f1f5f9" icon="📚" />
-            <StatCard value={shortTotal} label="短期记忆" color="#3b82f6" icon="🧠" />
-            <StatCard value={longTotal} label="长期记忆" color="#10b981" icon="💾" />
-            <StatCard value={weTotal} label="预警经验" color="#8b5cf6" icon="⚡" />
+            <StatCard value={shortTotal} label="短期记忆" color="#3b82f6" icon="ST" />
+            <StatCard value={longTotal} label="长期记忆" color="#10b981" icon="LT" />
+            <StatCard value={weTotal} label="预警经验" color="#8b5cf6" icon="EX" />
           </div>
 
           <div className="row cols-4" style={{ marginBottom: 14 }}>
             <StatCard value={memStats.pending_approvals ?? 0} label="待审批" color="#f59e0b" icon="📋" />
             <StatCard value={memStats.iteration_count ?? 0} label="迭代次数" color="#06b6d4" icon="🔄" />
-            <StatCard value={memStats.audit_log_count ?? 0} label="审计日志" color="#64748b" icon="🔍" />
+            <StatCard value={memStats.audit_log_count ?? 0} label="审计日志" color="#64748b" icon="AU" />
             <StatCard value={memStats.warning_experiences?.financial_total ?? 0} label="财务影响(万元)" color="#ef4444" icon="💰" />
           </div>
 
@@ -422,7 +426,7 @@ function OverviewDashboard() {
 
           <div className="row cols-3" style={{ marginBottom: 14 }}>
             <div className="scada-card" style={{ padding: 16 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: "#3b82f6", marginBottom: 10 }}>🧠 短期记忆分类</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#3b82f6", marginBottom: 10 }}>ST 短期记忆分类</div>
               {Object.entries(memStats.short_term?.by_category || {}).sort(([, a], [, b]) => (b as number) - (a as number)).map(([k, v]) => (
                 <div key={k} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                   <span style={{ fontSize: 12, color: "#cbd5e1" }}>{CAT_LABELS[k] || k}</span>
@@ -431,7 +435,7 @@ function OverviewDashboard() {
               ))}
             </div>
             <div className="scada-card" style={{ padding: 16 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: "#10b981", marginBottom: 10 }}>💾 长期记忆分类</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#10b981", marginBottom: 10 }}>LT 长期记忆分类</div>
               {Object.entries(memStats.long_term?.by_category || {}).sort(([, a], [, b]) => (b as number) - (a as number)).map(([k, v]) => (
                 <div key={k} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                   <span style={{ fontSize: 12, color: "#cbd5e1" }}>{CAT_LABELS[k] || k}</span>

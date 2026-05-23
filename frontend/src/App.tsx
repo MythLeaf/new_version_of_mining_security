@@ -1,17 +1,14 @@
 import { useEffect, useState } from "react";
 import {
   fetchHealth,
-  fetchIterationStatus,
   switchScenario,
 } from "./api/client";
 import type {
   HealthResponse,
-  IterationStatus,
   ScenarioId,
 } from "./api/types";
 import StatusBar from "./components/StatusBar";
 import Sidebar from "./components/Sidebar";
-import Tabs from "./components/Tabs";
 import { SCENARIO_NAMES } from "./data/demoData";
 import RiskPredictionPage from "./pages/RiskPredictionPage";
 import KnowledgeMemoryPage from "./pages/KnowledgeMemoryPage";
@@ -29,14 +26,11 @@ const TAB_DEFS = [
 
 export default function App() {
   const [health, setHealth] = useState<HealthResponse | null>(null);
-  const [iteration, setIteration] = useState<IterationStatus | null>(null);
   const [scenario, setScenario] = useState<ScenarioId>("chemical");
-  const [demoMode, setDemoMode] = useState(false);
   const [activeTab, setActiveTab] = useState<string>("risk");
 
   useEffect(() => {
     fetchHealth().then(setHealth);
-    fetchIterationStatus().then(setIteration);
     const id = setInterval(() => {
       fetchHealth().then(setHealth);
     }, 30_000);
@@ -50,15 +44,13 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <StatusBar health={health} scenarioName={SCENARIO_NAMES[scenario]} />
+      <StatusBar
+        health={health}
+        scenario={scenario}
+        onScenarioChange={changeScenario}
+      />
       <div className="app-body">
         <Sidebar
-          health={health}
-          scenario={scenario}
-          onScenarioChange={changeScenario}
-          iteration={iteration}
-          demoMode={demoMode}
-          onDemoToggle={setDemoMode}
           activeTab={activeTab}
           onTabChange={setActiveTab}
           navItems={TAB_DEFS}
@@ -75,7 +67,6 @@ export default function App() {
               SCENE / {SCENARIO_NAMES[scenario]}
             </div>
           </div>
-          <Tabs tabs={TAB_DEFS} active={activeTab} onChange={setActiveTab} />
           <section className="workspace-surface">
             {activeTab === "risk" && <RiskPredictionPage scenario={scenario} />}
             {activeTab === "visualization" && <VisualizationDashboard />}
