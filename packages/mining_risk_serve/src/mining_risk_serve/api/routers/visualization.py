@@ -6,17 +6,25 @@
 import json
 import os
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from datetime import datetime, timedelta
 
+from mining_risk_common.dataplane.enterprise_db_adapter import (
+    collect_enterprise_lookup_keys,
+    flatten_enterprise_detail,
+)
 from mining_risk_common.utils.logger import get_logger
 from mining_risk_common.utils.config import get_config, resolve_project_path
-from mining_risk_serve.api.services.decision_store import DecisionStore
+from mining_risk_serve.api.schemas.prediction import BatchDecisionResponse, VALID_SCENARIO_IDS
+from mining_risk_serve.api.security import require_admin_token
+from mining_risk_serve.api.services.decision_batch_service import get_batch_service
+from mining_risk_serve.api.services.decision_store import DecisionStore, get_decision_settings
+from mining_risk_serve.api.services.prediction_service import PredictionService, get_prediction_service
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -830,6 +838,13 @@ _CACHE_TTL = 300.0
 _MAP_CACHE_KEY = "map_markers"
 
 
+def invalidate_enterprise_map_cache() -> None:
+    """决策持久化后失效地图 markers 缓存，避免长时间显示旧预测状态。"""
+    global _enterprise_cache, _cache_timestamp
+    _enterprise_cache.pop(_MAP_CACHE_KEY, None)
+    _cache_timestamp = 0.0
+
+
 def _is_cache_valid() -> bool:
     import time
     return (time.time() - _cache_timestamp) < _CACHE_TTL
@@ -954,6 +969,15 @@ class EnterpriseDetailResponse(BaseModel):
     data: Dict[str, Any]
 
 
+class EnterpriseDecisionPayloadResponse(BaseModel):
+    success: bool
+    folder: str
+    name: str
+    enterprise_id: str
+    payload: Dict[str, Any] = Field(default_factory=dict)
+    source: str = "enterprise_db"
+
+
 class EnterpriseMapMarker(BaseModel):
     folder: str
     name: str
@@ -966,6 +990,15 @@ class EnterpriseMapMarker(BaseModel):
     last_predicted_at: Optional[str] = None
     scenario_id: Optional[str] = None
     reported_level: str = ""
+
+
+class EnterpriseMapBatchPredictRequest(BaseModel):
+    folders: List[str] = Field(default_factory=list, description="企业库文件夹名；为空时按筛选条件自动选取")
+    scenario_id: str = "chemical"
+    skip_predicted: bool = Field(False, description="跳过已有模型预测的企业")
+    keyword: str = ""
+    predicted_level: str = ""
+    tracked_only: bool = False
 
 
 class EnterpriseMapMeta(BaseModel):
@@ -1053,33 +1086,93 @@ def _extract_probability(record: Dict[str, Any], level: str) -> Optional[float]:
     return _as_float(value)
 
 
+def _merge_prediction_index_entry(
+    index: Dict[str, Dict[str, Any]],
+    lookup_keys: Iterable[str],
+    entry: Dict[str, Any],
+) -> None:
+    created_at = str(entry.get("last_predicted_at") or "")
+    for raw in lookup_keys:
+        key = str(raw or "").strip()
+        if not key:
+            continue
+        current = index.get(key)
+        if current and str(current.get("last_predicted_at") or "") >= created_at:
+            continue
+        index[key] = entry
+
+
+def _prediction_lookup_keys_from_record(
+    summary: Dict[str, Any],
+    record: Optional[Dict[str, Any]] = None,
+) -> List[str]:
+    keys: List[str] = []
+    for value in (
+        summary.get("enterprise_name"),
+        summary.get("enterprise_id"),
+    ):
+        if value not in (None, ""):
+            keys.append(str(value))
+    if not record:
+        return keys
+    req = record.get("request") or {}
+    data = req.get("data") or {}
+    resp = record.get("response") or {}
+    for value in (
+        req.get("enterprise_id"),
+        resp.get("enterprise_id"),
+        data.get("企业名称"),
+        data.get("enterprise_name"),
+        data.get("单位名称"),
+        data.get("公司名称"),
+        data.get("统一社会信用代码"),
+        data.get("企业ID"),
+        data.get("enterprise_id"),
+    ):
+        if value not in (None, ""):
+            keys.append(str(value))
+    return keys
+
+
+def _resolve_marker_prediction(
+    prediction_index: Dict[str, Dict[str, Any]],
+    lookup_keys: Iterable[str],
+) -> Dict[str, Any]:
+    for raw in lookup_keys:
+        key = str(raw or "").strip()
+        if key and key in prediction_index:
+            return prediction_index[key]
+    return {}
+
+
 def _build_latest_predictions_index() -> Dict[str, Dict[str, Any]]:
     index: Dict[str, Dict[str, Any]] = {}
     try:
         store = DecisionStore()
         for summary in store.list_all_summaries():
-            name = str(summary.get("enterprise_name") or "").strip()
-            if not name:
-                continue
             created_at = str(summary.get("created_at") or "")
-            current = index.get(name)
-            if current and str(current.get("last_predicted_at") or "") >= created_at:
-                continue
-
+            record = None
             probability = None
             try:
                 record = store.load_record(str(summary.get("record_id") or ""))
-                probability = _extract_probability(record, str(summary.get("predicted_level") or ""))
+                probability = _extract_probability(
+                    record, str(summary.get("predicted_level") or "")
+                )
             except Exception:
+                record = None
                 probability = None
 
-            index[name] = {
+            entry = {
                 "predicted_level": summary.get("predicted_level") or None,
                 "probability": probability,
                 "tracked": True,
                 "last_predicted_at": created_at or None,
                 "scenario_id": summary.get("scenario_id") or None,
             }
+            lookup_keys = _prediction_lookup_keys_from_record(summary, record)
+            if not lookup_keys:
+                continue
+            _merge_prediction_index_entry(index, lookup_keys, entry)
     except Exception as exc:
         logger.warning("构建企业地图预测索引失败: %s", exc)
     return index
@@ -1105,7 +1198,8 @@ def _build_enterprise_map_markers() -> Tuple[List[Dict[str, Any]], Dict[str, int
             continue
         lat, lng = coord
         meta = enterprise_meta.get(name, {})
-        pred = prediction_index.get(name, {})
+        lookup_keys = [name, folder, *collect_enterprise_lookup_keys(detail)]
+        pred = _resolve_marker_prediction(prediction_index, lookup_keys)
         markers.append({
             "folder": folder,
             "name": name,
@@ -1176,6 +1270,103 @@ async def get_enterprise_detail(folder_name: str):
     )
 
 
+@router.get(
+    "/enterprise-db/decision-payload/{folder_name:path}",
+    response_model=EnterpriseDecisionPayloadResponse,
+)
+async def get_enterprise_decision_payload(folder_name: str):
+    """将企业库嵌套 JSON 转为风险预测/决策工作流可用的平铺 data 字段。"""
+    detail = _load_enterprise_detail(folder_name)
+    if not detail:
+        raise HTTPException(status_code=404, detail="企业数据未找到")
+    payload = flatten_enterprise_detail(detail)
+    name = str(detail.get("企业名称") or folder_name).strip()
+    enterprise_id = str(
+        payload.get("enterprise_id")
+        or payload.get("企业ID")
+        or payload.get("统一社会信用代码")
+        or folder_name
+    )
+    return EnterpriseDecisionPayloadResponse(
+        success=True,
+        folder=folder_name,
+        name=name,
+        enterprise_id=enterprise_id,
+        payload=payload,
+        source="enterprise_db",
+    )
+
+
+def _filter_map_markers(
+    markers: List[Dict[str, Any]],
+    *,
+    keyword: str,
+    predicted_level: str,
+    tracked_only: bool,
+    skip_predicted: bool,
+) -> List[Dict[str, Any]]:
+    keyword_norm = keyword.strip()
+    level_norm = predicted_level.strip()
+    filtered: List[Dict[str, Any]] = []
+    for marker in markers:
+        if tracked_only and not marker.get("tracked"):
+            continue
+        if keyword_norm and keyword_norm not in str(marker.get("name", "")):
+            continue
+        if level_norm and marker.get("predicted_level") != level_norm:
+            continue
+        if skip_predicted and marker.get("predicted_level"):
+            continue
+        filtered.append(marker)
+    return filtered
+
+
+def _build_enterprise_batch_rows(folders: List[str]) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    for folder in folders:
+        folder_name = str(folder or "").strip()
+        if not folder_name:
+            continue
+        detail = _load_enterprise_detail(folder_name)
+        if not detail:
+            continue
+        payload = flatten_enterprise_detail(detail)
+        if not payload:
+            continue
+        name = str(detail.get("企业名称") or folder_name).strip()
+        payload["企业名称"] = name
+        enterprise_id = str(
+            payload.get("enterprise_id")
+            or payload.get("企业ID")
+            or payload.get("统一社会信用代码")
+            or folder_name
+        ).strip()
+        rows.append(
+            {
+                "folder": folder_name,
+                "name": name,
+                "enterprise_id": enterprise_id,
+                "data": payload,
+            }
+        )
+    return rows
+
+
+def _resolve_enterprise_map_batch_folders(body: EnterpriseMapBatchPredictRequest) -> List[str]:
+    explicit = [str(f).strip() for f in body.folders if str(f).strip()]
+    if explicit:
+        return explicit
+    markers, _ = _get_cached_map_markers()
+    filtered = _filter_map_markers(
+        markers,
+        keyword=body.keyword,
+        predicted_level=body.predicted_level,
+        tracked_only=body.tracked_only,
+        skip_predicted=body.skip_predicted,
+    )
+    return [str(marker.get("folder") or "").strip() for marker in filtered if marker.get("folder")]
+
+
 @router.get("/enterprise-map/markers", response_model=EnterpriseMapMarkersResponse)
 async def get_enterprise_map_markers(
     tracked_only: bool = Query(False),
@@ -1184,16 +1375,15 @@ async def get_enterprise_map_markers(
     has_prediction: Optional[bool] = Query(None),
 ) -> EnterpriseMapMarkersResponse:
     markers, meta = _get_cached_map_markers()
+    filtered_raw = _filter_map_markers(
+        markers,
+        keyword=keyword,
+        predicted_level=predicted_level,
+        tracked_only=tracked_only,
+        skip_predicted=False,
+    )
     filtered = []
-    keyword_norm = keyword.strip()
-    level_norm = predicted_level.strip()
-    for marker in markers:
-        if tracked_only and not marker.get("tracked"):
-            continue
-        if keyword_norm and keyword_norm not in str(marker.get("name", "")):
-            continue
-        if level_norm and marker.get("predicted_level") != level_norm:
-            continue
+    for marker in filtered_raw:
         if has_prediction is True and not marker.get("predicted_level"):
             continue
         if has_prediction is False and marker.get("predicted_level"):
@@ -1204,6 +1394,37 @@ async def get_enterprise_map_markers(
         markers=filtered,
         meta=EnterpriseMapMeta(**{**meta, "returned": len(filtered)}),
     )
+
+
+@router.post("/enterprise-map/batch-predict", response_model=BatchDecisionResponse)
+async def enterprise_map_batch_predict(
+    body: EnterpriseMapBatchPredictRequest,
+    _: None = Depends(require_admin_token),
+    service: PredictionService = Depends(get_prediction_service),
+) -> BatchDecisionResponse:
+    """从企业库目录批量运行 Stacking 模型预测（不调用 GLM），结果写入 var/decisions 并更新地图着色。"""
+    scenario = body.scenario_id or "chemical"
+    if scenario not in VALID_SCENARIO_IDS:
+        raise HTTPException(status_code=400, detail=f"无效场景: {scenario}")
+
+    folders = _resolve_enterprise_map_batch_folders(body)
+    if not folders:
+        raise HTTPException(status_code=400, detail="没有符合筛选条件的企业可批量预测")
+
+    max_rows = int(get_decision_settings()["batch_max_rows"])
+    if len(folders) > max_rows:
+        folders = folders[:max_rows]
+
+    rows = _build_enterprise_batch_rows(folders)
+    if not rows:
+        raise HTTPException(status_code=400, detail="所选企业无法从企业库生成预测载荷")
+
+    batch_service = get_batch_service(service)
+    resp = await batch_service.create_map_predict_job(rows, scenario_id=scenario)
+    skipped = len(folders) - len(rows)
+    if skipped:
+        resp.message = f"{resp.message}（{skipped} 家因档案缺失或特征为空已跳过）"
+    return resp
 
 
 @router.get("/industry-warning", response_model=IndustryWarningResponse)

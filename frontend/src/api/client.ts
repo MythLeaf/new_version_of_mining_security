@@ -22,7 +22,9 @@ import type {
   DemoIterationStepResponse,
   DemoReplayLoadResponse,
   EnterpriseDetailResponse,
+  EnterpriseDecisionPayloadResponse,
   EnterpriseListResponse,
+  EnterpriseMapBatchPredictRequest,
   EnterpriseMapMarkersResponse,
   HealthResponse,
   IndustryWarningResponse,
@@ -1276,6 +1278,66 @@ export async function fetchEnterpriseDbDetail(folderName: string): Promise<Enter
   }
 }
 
+export type EnterpriseDecisionPayloadFetchResult =
+  | { ok: true; data: EnterpriseDecisionPayloadResponse }
+  | { ok: false; status: number; detail: string };
+
+async function readHttpErrorDetail(resp: Response): Promise<string> {
+  const text = await resp.text().catch(() => "");
+  if (!text) return resp.statusText || `HTTP ${resp.status}`;
+  try {
+    const body = JSON.parse(text) as { detail?: string | { msg?: string }[] };
+    const detail = body.detail;
+    if (typeof detail === "string") return detail;
+    if (Array.isArray(detail) && detail.length > 0) {
+      const first = detail[0];
+      if (typeof first === "object" && first && "msg" in first) {
+        return String(first.msg);
+      }
+    }
+  } catch {
+    // 非 JSON
+  }
+  return text.length > 200 ? `${text.slice(0, 200)}…` : text;
+}
+
+export async function fetchEnterpriseDecisionPayload(
+  folderName: string,
+): Promise<EnterpriseDecisionPayloadFetchResult> {
+  try {
+    const resp = await fetch(
+      url(`/api/v1/visualization/enterprise-db/decision-payload/${encodeURIComponent(folderName)}`),
+    );
+    if (!resp.ok) {
+      const detail = await readHttpErrorDetail(resp);
+      console.error("获取企业库预测载荷失败:", resp.status, detail);
+      return { ok: false, status: resp.status, detail };
+    }
+    const data = await jsonOrThrow<EnterpriseDecisionPayloadResponse>(resp);
+    return { ok: true, data };
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e);
+    console.error("获取企业库预测载荷失败:", e);
+    return { ok: false, status: 0, detail };
+  }
+}
+
+export async function createEnterpriseMapBatchPredict(
+  body: EnterpriseMapBatchPredictRequest,
+): Promise<BatchDecisionResponse | null> {
+  try {
+    const resp = await fetch(url("/api/v1/visualization/enterprise-map/batch-predict"), {
+      method: "POST",
+      headers: adminHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(body),
+    });
+    if (!resp.ok) throw new Error(await responseError(resp));
+    return (await resp.json()) as BatchDecisionResponse;
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchEnterpriseMapMarkers(params: {
   tracked_only?: boolean;
   keyword?: string;
@@ -1308,4 +1370,10 @@ export async function fetchIndustryList(): Promise<{ success: boolean; industrie
   }
 }
 
-export type { EnterpriseDetailResponse, EnterpriseMapMarkersResponse, IndustryWarningResponse, EnterpriseListResponse };
+export type {
+  EnterpriseDetailResponse,
+  EnterpriseDecisionPayloadResponse,
+  EnterpriseMapMarkersResponse,
+  IndustryWarningResponse,
+  EnterpriseListResponse,
+};

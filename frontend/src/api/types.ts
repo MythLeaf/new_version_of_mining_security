@@ -846,6 +846,15 @@ export interface EnterpriseDetailResponse {
   data: Record<string, unknown>;
 }
 
+export interface EnterpriseDecisionPayloadResponse {
+  success: boolean;
+  folder: string;
+  name: string;
+  enterprise_id: string;
+  payload: Record<string, unknown>;
+  source: string;
+}
+
 export interface EnterpriseMapMarker {
   folder: string;
   name: string;
@@ -866,6 +875,15 @@ export interface EnterpriseMapMeta {
   skipped_no_coords: number;
   returned: number;
   tracked_count: number;
+}
+
+export interface EnterpriseMapBatchPredictRequest {
+  folders?: string[];
+  scenario_id: string;
+  skip_predicted?: boolean;
+  keyword?: string;
+  predicted_level?: string;
+  tracked_only?: boolean;
 }
 
 export interface EnterpriseMapMarkersResponse {

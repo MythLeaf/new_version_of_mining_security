@@ -24,8 +24,16 @@ import ScadaCard from "../components/ScadaCard";
 import BatchDecisionPanel from "../components/BatchDecisionPanel";
 import { useDecisionBatch } from "../context/DecisionBatchContext";
 import { ProbabilityChart, ShapChart } from "../components/charts";
+import { consumeEnterprisePredictionImport } from "../lib/enterprisePredictionImport";
 import { formatFeatureLabel } from "../lib/featureLabels";
 import { LEVEL_GLOW, LEVEL_HEX, RISK_LEVELS_CONFIG } from "../lib/riskLevels";
+import {
+  buildWorkflowTimeline,
+  createPendingWorkflowNodes,
+  applyNodeStatusUpdate,
+  getWorkflowNodeLabel,
+  resolveTimelineVisualStatus,
+} from "../lib/workflowNodes";
 import JsonView from "../components/JsonView";
 import ReactECharts from "echarts-for-react";
 
@@ -110,9 +118,25 @@ export default function RiskPredictionPage({ scenario }: Props) {
     batchStatus?.status === "cancelled";
   const batchCancelling = batchStatus?.status === "cancelling";
   const abortRef = useRef<AbortController | null>(null);
+  const enterpriseImportRef = useRef(false);
 
   useEffect(() => {
-    setDataText(getDemoDataJson(scenario));
+    const imported = consumeEnterprisePredictionImport();
+    if (imported) {
+      enterpriseImportRef.current = true;
+      setEnterpriseId(imported.enterpriseId);
+      setDataText(JSON.stringify(imported.payload, null, 2));
+      setUploadedFile(null);
+      setUploadedRow(null);
+      setUploadInfo(
+        imported.hint ||
+          `已从企业库导入「${imported.name || imported.folder || imported.enterpriseId}」。`,
+      );
+      return;
+    }
+    if (!enterpriseImportRef.current) {
+      setDataText(getDemoDataJson(scenario));
+    }
   }, [scenario]);
 
   async function handleUpload(file: File) {
@@ -168,7 +192,7 @@ export default function RiskPredictionPage({ scenario }: Props) {
     payload.scenario_id = scenario;
 
     setLoading(true);
-    setStreamLog([]);
+    setStreamLog(createPendingWorkflowNodes());
     setDecision(null);
     setMockSource(null);
 
@@ -182,7 +206,10 @@ export default function RiskPredictionPage({ scenario }: Props) {
         result = await streamDecision(
           enterpriseId,
           payload,
-          (msg) => setStreamLog((prev) => [...prev, msg]),
+          (msg) => {
+            if (msg.node === "workflow") return;
+            setStreamLog((prev) => applyNodeStatusUpdate(prev, msg));
+          },
           ctrl.signal,
           scenario,
         );
@@ -238,11 +265,15 @@ export default function RiskPredictionPage({ scenario }: Props) {
             当前场景:{" "}
             <b style={{ color: "#e5e7eb" }}>{SCENARIO_NAMES[scenario]}</b>
           </div>
+          <p className="muted" style={{ fontSize: 12, margin: "0 0 10px" }}>
+            企业库 JSON 为嵌套结构，请先在「风险地图」选中企业并点「导入预测页」，或在此粘贴已扁平化的 JSON。
+          </p>
 
           <button
             className="scada-btn secondary"
             type="button"
             onClick={() => {
+              enterpriseImportRef.current = false;
               setDataText(getDemoDataJson(scenario));
               setUploadedFile(null);
               setUploadedRow(null);
@@ -429,7 +460,7 @@ export default function RiskPredictionPage({ scenario }: Props) {
         {/* 右侧结果区 */}
         <div>
           {loading && streamLog.length === 0 && <SpinnerBox />}
-          {!loading && !decision && streamLog.length === 0 && (
+          {!loading && !decision && streamLog.length === 0 && !error && (
             <div className="empty-state">
               👈 在左侧输入企业数据并点击「执行预测」查看结果
             </div>
@@ -711,10 +742,10 @@ export function DecisionView({ decision, streamLog, mockSource }: DecisionProps)
     ? `${failedNode.node} 节点失败：${failedNode.error ?? failedNode.detail ?? "未知错误"}`
     : null;
 
-  const finalNodes = useMemo(() => {
-    if (streamLog.length > 0) return streamLog;
-    return decision.node_status ?? [];
-  }, [streamLog, decision.node_status]);
+  const finalNodes = useMemo(
+    () => buildWorkflowTimeline(streamLog, decision.node_status),
+    [streamLog, decision.node_status],
+  );
 
   return (
     <div>
@@ -1052,24 +1083,34 @@ function TimelineLogs({ nodes }: { nodes: NodeStatus[] }) {
   }
   return (
     <div className="timeline-container">
-      {nodes.map((ns, idx) => {
-        const cls = ns.status === "completed"
-          ? "completed"
-          : ns.status === "failed"
-          ? "failed"
-          : ns.status === "running"
-          ? "running"
-          : "";
-        const icon = ns.status === "completed"
-          ? "✓"
-          : ns.status === "failed"
-          ? "✗"
-          : "⟳";
+      {nodes.map((ns) => {
+        const visual = resolveTimelineVisualStatus(ns.status);
+        const icon =
+          visual === "completed"
+            ? "✓"
+            : visual === "failed"
+            ? "✗"
+            : visual === "skipped"
+            ? "⊘"
+            : visual === "running"
+            ? "⟳"
+            : "○";
         return (
-          <div className={`timeline-node ${cls}`} key={idx}>
+          <div className={`timeline-node ${visual}`} key={ns.node}>
             <div>
               <div className="node-name">
-                {icon} {ns.node}
+                {icon} {getWorkflowNodeLabel(ns.node)}
+                <span
+                  style={{
+                    marginLeft: 8,
+                    fontSize: 11,
+                    fontWeight: 500,
+                    color: "var(--text-dim)",
+                    fontFamily: "JetBrains Mono, monospace",
+                  }}
+                >
+                  {ns.node}
+                </span>
               </div>
               {ns.detail && <div className="node-detail">{ns.detail}</div>}
             </div>
