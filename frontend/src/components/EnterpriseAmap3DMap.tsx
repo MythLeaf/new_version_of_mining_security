@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { EmergencyFacility, EnterpriseMapMarker } from "../api/types";
-import { loadAmap, type AMapNamespace } from "../lib/amapLoader";
+import { loadAmap, purgeAmapDomArtifacts, type AMapNamespace } from "../lib/amapLoader";
 import { EMERGENCY_FACILITY_COLORS, EMERGENCY_FACILITY_SHORT_LABELS } from "../lib/emergencyFacilities";
 import { createRiskFieldDataUrl, normalizeMapBounds, type RiskFieldBounds } from "../lib/riskField";
 import { riskLevelColor } from "../lib/riskLevels";
@@ -150,14 +150,48 @@ export default function EnterpriseAmap3DMap({
       facilityOverlaysRef.current = [];
       riskFieldLayerRef.current = null;
       if (riskFieldTimerRef.current !== null) window.clearTimeout(riskFieldTimerRef.current);
+
+      const map = mapRef.current;
+      const infoWindow = infoWindowRef.current;
       infoWindowRef.current = null;
-      if (mapRef.current) {
-        mapRef.current.destroy();
-        mapRef.current = null;
+      mapRef.current = null;
+
+      if (infoWindow) {
+        try {
+          infoWindow.close();
+        } catch {
+          // ignore teardown errors
+        }
+        try {
+          if (typeof infoWindow.destroy === "function") infoWindow.destroy();
+        } catch {
+          // ignore teardown errors
+        }
       }
-      if (containerRef.current) {
-        containerRef.current.innerHTML = "";
+
+      if (map) {
+        try {
+          if (typeof map.clearInfoWindow === "function") map.clearInfoWindow();
+        } catch {
+          // ignore teardown errors
+        }
+        try {
+          map.clearMap();
+        } catch {
+          // ignore teardown errors
+        }
+        try {
+          map.destroy();
+        } catch {
+          // ignore teardown errors
+        }
       }
+
+      const container = containerRef.current;
+      if (container) {
+        container.replaceChildren();
+      }
+      purgeAmapDomArtifacts();
     };
   }, []);
 

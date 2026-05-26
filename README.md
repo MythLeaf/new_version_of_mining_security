@@ -223,6 +223,19 @@ docker compose up -d --build
 cd frontend && npm install && npm run dev   # http://localhost:5173，/api 代理 :8000
 ```
 
+**批量预测 / 知识库写入等管理操作**需配置管理员令牌（前后端一致）：
+
+```bash
+cp .env.example .env
+# 编辑 MRA_ADMIN_TOKEN=dev-admin-token（或仅本地演示：MRA_ALLOW_UNAUTHENTICATED_ADMIN=true）
+
+cp frontend/.env.example frontend/.env.local
+# 编辑 VITE_ADMIN_API_TOKEN=dev-admin-token（与 MRA_ADMIN_TOKEN 相同；无鉴权模式可留空）
+
+bash scripts/run_api.sh --reload   # 重启 API 使 .env 生效
+# 重启 npm run dev 使 frontend/.env.local 生效
+```
+
 可用 `VITE_DEV_API_TARGET=http://其他主机:8000 npm run dev` 指向远程后端。结构说明见 [frontend/README.md](frontend/README.md)。
 
 ### 生产部署

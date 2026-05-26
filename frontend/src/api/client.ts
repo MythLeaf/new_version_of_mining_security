@@ -1323,19 +1323,26 @@ export async function fetchEnterpriseDecisionPayload(
   }
 }
 
+export type EnterpriseMapBatchPredictResult =
+  | { ok: true; data: BatchDecisionResponse }
+  | { ok: false; status: number; detail: string };
+
 export async function createEnterpriseMapBatchPredict(
   body: EnterpriseMapBatchPredictRequest,
-): Promise<BatchDecisionResponse | null> {
+): Promise<EnterpriseMapBatchPredictResult> {
   try {
     const resp = await fetch(url("/api/v1/visualization/enterprise-map/batch-predict"), {
       method: "POST",
       headers: adminHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(body),
     });
-    if (!resp.ok) throw new Error(await responseError(resp));
-    return (await resp.json()) as BatchDecisionResponse;
-  } catch {
-    return null;
+    if (!resp.ok) {
+      return { ok: false, status: resp.status, detail: await readHttpErrorDetail(resp) };
+    }
+    return { ok: true, data: (await resp.json()) as BatchDecisionResponse };
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e);
+    return { ok: false, status: 0, detail };
   }
 }
 

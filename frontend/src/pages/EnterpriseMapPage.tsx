@@ -8,6 +8,7 @@ import EmergencyFacilitiesLayer from "../components/EmergencyFacilitiesLayer";
 import EnterpriseAmap3DMap from "../components/EnterpriseAmap3DMap";
 import RiskFieldLeafletLayer from "../components/RiskFieldLeafletLayer";
 import { useDecisionBatch } from "../context/DecisionBatchContext";
+import { purgeAmapDomArtifacts } from "../lib/amapLoader";
 import { AMAP_TILE_ATTRIBUTION, AMAP_TILE_SUBDOMAINS, AMAP_TILE_URL } from "../lib/amapTiles";
 import { EMERGENCY_FACILITY_COLORS, EMERGENCY_FACILITY_OPTIONS } from "../lib/emergencyFacilities";
 import {
@@ -91,6 +92,36 @@ function FitToMarkers({
   return null;
 }
 
+/** 3D 卸载后 Leaflet 常在 0 尺寸容器内初始化，需主动 invalidateSize 才能加载瓦片。 */
+function LeafletMapResizer() {
+  const map = useMap();
+
+  useEffect(() => {
+    const invalidate = () => map.invalidateSize({ animate: false });
+
+    invalidate();
+    const raf1 = requestAnimationFrame(() => {
+      invalidate();
+      requestAnimationFrame(invalidate);
+    });
+    const timers = [80, 200, 400].map((ms) => window.setTimeout(invalidate, ms));
+
+    const container = map.getContainer();
+    const observer = typeof ResizeObserver !== "undefined"
+      ? new ResizeObserver(() => invalidate())
+      : null;
+    observer?.observe(container);
+
+    return () => {
+      cancelAnimationFrame(raf1);
+      timers.forEach((id) => window.clearTimeout(id));
+      observer?.disconnect();
+    };
+  }, [map]);
+
+  return null;
+}
+
 function MapBoundsReporter({ onBoundsChange }: { onBoundsChange: (bounds: RiskFieldBounds) => void }) {
   const map = useMap();
 
@@ -128,6 +159,8 @@ export default function EnterpriseMapPage({ scenario }: Props) {
   const [error, setError] = useState("");
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const [mapEngine, setMapEngine] = useState<MapEngine>(storedSettings.mapEngine);
+  const [mapSurfaceReady, setMapSurfaceReady] = useState(true);
+  const prevMapEngineRef = useRef<MapEngine>(storedSettings.mapEngine);
   const [listExpanded, setListExpanded] = useState(false);
   const [importingFolder, setImportingFolder] = useState<string | null>(null);
   const [multiSelectMode, setMultiSelectMode] = useState(false);
@@ -176,6 +209,23 @@ export default function EnterpriseMapPage({ scenario }: Props) {
   useEffect(() => {
     loadMarkers();
   }, [loadMarkers]);
+
+  useEffect(() => {
+    const prev = prevMapEngineRef.current;
+    if (prev === mapEngine) return;
+    prevMapEngineRef.current = mapEngine;
+
+    if (prev === "3d" && mapEngine === "2d") {
+      setMapSurfaceReady(false);
+      const timer = window.setTimeout(() => {
+        purgeAmapDomArtifacts();
+        setMapSurfaceReady(true);
+      }, 120);
+      return () => window.clearTimeout(timer);
+    }
+
+    setMapSurfaceReady(true);
+  }, [mapEngine]);
 
   useEffect(() => {
     saveEnterpriseMapSettings({
@@ -382,7 +432,7 @@ export default function EnterpriseMapPage({ scenario }: Props) {
           <p className="section-kicker">实时空间态势</p>
           <h2>企业风险地图</h2>
           <p className="muted">
-            {mapSourceLabel} · 当前场景 {scenario} · 批量预测仅调用 Stacking 模型（不调 GLM）
+            {mapSourceLabel} · 当前场景 {scenario} · 批量预测仅调用 Stacking 模型
           </p>
         </div>
         <div className="enterprise-map-stats">
@@ -620,14 +670,24 @@ export default function EnterpriseMapPage({ scenario }: Props) {
               3D 倾斜
             </button>
           </div>
-          {mapEngine === "2d" ? (
-            <MapContainer center={SUZHOU_CENTER} zoom={12} scrollWheelZoom className="enterprise-leaflet-map">
-              <TileLayer
-                attribution={AMAP_TILE_ATTRIBUTION}
-                url={AMAP_TILE_URL}
-                subdomains={AMAP_TILE_SUBDOMAINS}
-              />
-              {!selectedFolder && (
+          <div key={`${mapEngine}-${mapSurfaceReady ? "ready" : "pending"}`} className="enterprise-map-engine-host">
+            {!mapSurfaceReady ? (
+              <div className="enterprise-map-engine-placeholder" aria-hidden />
+            ) : mapEngine === "2d" ? (
+              <MapContainer
+                key="enterprise-leaflet-2d"
+                center={SUZHOU_CENTER}
+                zoom={12}
+                scrollWheelZoom
+                className="enterprise-leaflet-map"
+              >
+                <LeafletMapResizer />
+                <TileLayer
+                  attribution={AMAP_TILE_ATTRIBUTION}
+                  url={AMAP_TILE_URL}
+                  subdomains={AMAP_TILE_SUBDOMAINS}
+                />
+                {!selectedFolder && (
                 <FitToMarkers markers={markers} fitKey={markerFitKey} ready={!loading} />
               )}
               <MapBoundsReporter onBoundsChange={setMapBounds} />
@@ -671,20 +731,22 @@ export default function EnterpriseMapPage({ scenario }: Props) {
                   </CircleMarker>
                 );
               })}
-              {showEmergencyFacilities && <EmergencyFacilitiesLayer facilities={emergencyFacilities} />}
-            </MapContainer>
-          ) : (
-            <EnterpriseAmap3DMap
-              markers={markers}
-              selectedFolder={selectedFolder}
-              onSelect={selectMarker}
-              showRiskField={showRiskField}
-              riskFieldOpacity={riskFieldOpacity}
-              riskFieldRadiusKm={riskFieldRadiusKm}
-              facilities={showEmergencyFacilities ? emergencyFacilities : []}
-              onBoundsChange={setMapBounds}
-            />
-          )}
+                {showEmergencyFacilities && <EmergencyFacilitiesLayer facilities={emergencyFacilities} />}
+              </MapContainer>
+            ) : (
+              <EnterpriseAmap3DMap
+                key="enterprise-amap-3d"
+                markers={markers}
+                selectedFolder={selectedFolder}
+                onSelect={selectMarker}
+                showRiskField={showRiskField}
+                riskFieldOpacity={riskFieldOpacity}
+                riskFieldRadiusKm={riskFieldRadiusKm}
+                facilities={showEmergencyFacilities ? emergencyFacilities : []}
+                onBoundsChange={setMapBounds}
+              />
+            )}
+          </div>
         </section>
 
         <section className={`enterprise-map-list-panel scada-card ${listExpanded ? "expanded" : "collapsed"}`}>
