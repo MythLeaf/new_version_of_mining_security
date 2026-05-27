@@ -1,0 +1,518 @@
+import {
+  apiBase,
+  fetchDecisionSettings,
+  fetchHealth,
+  listKnowledge,
+  readKnowledge,
+  updateDecisionSettings,
+} from "../api/client";
+import { SCENARIO_CONFIG, SCENARIO_NAMES } from "../data/demoData";
+import type { DecisionSettingsResponse, HealthResponse, ScenarioId } from "../api/types";
+import { useEffect, useMemo, useState } from "react";
+import JsonView from "../components/JsonView";
+
+interface Props {
+  scenario: ScenarioId;
+  health: HealthResponse | null;
+}
+
+const WORKFLOW_NODES = [
+  {
+    name: "数据接入",
+    tags: ["HTTP", "CSV", "Excel"],
+    tagColor: "cyan" as const,
+    desc: "接收政府监管平台推送的企业动态数据，并读取 Harness 挂载的 Markdown 静态知识库。",
+  },
+  {
+    name: "风险评估",
+    tags: ["Stacking", "SHAP"],
+    tagColor: "blue" as const,
+    desc: "加载序列化预警模型，输出红橙黄蓝四分类概率、置信度与 Top3 特征归因。",
+  },
+  {
+    name: "记忆召回",
+    tags: ["AgentFS", "RAG"],
+    tagColor: "violet" as const,
+    desc: "从 SQLite/Git 快照与长期知识库召回相似案例，经重排序后压缩为决策上下文。",
+  },
+  {
+    name: "决策生成",
+    tags: ["LangGraph", "DAG"],
+    tagColor: "amber" as const,
+    desc: "按风险等级生成结构化处置建议，覆盖核心归因、政府协同干预与企业设施管控。",
+  },
+  {
+    name: "合规校验",
+    tags: ["MARCH", "Monte Carlo"],
+    tagColor: "emerald" as const,
+    desc: "执行合规红线、工况逻辑、处置可行性三重审核，并用置信度采样拦截高风险输出。",
+  },
+  {
+    name: "结果推送",
+    tags: ["Audit Trail"],
+    tagColor: "orange" as const,
+    desc: "将最终 Payload 写入审计链路；触发人工审核、驳回或准入等闭环状态。",
+  },
+];
+
+const CAPABILITY_ROWS = [
+  {
+    module: "多源数据治理",
+    basis: "方案一：特征工程预处理；方案二：多模态融合数据库",
+    detail: "二值、数值、枚举、文本和行业分类统一归一化；动态数据与法规、SOP、案例文本进入同一知识底座。",
+  },
+  {
+    module: "风险预测模型",
+    basis: "方案一：防泄露 Stacking 集成学习",
+    detail: "XGBoost、LightGBM、CatBoost、RF、LR、MLP、1D-CNN 作为基学习器，弹性网络逻辑回归融合输出。",
+  },
+  {
+    module: "长短期记忆",
+    basis: "方案二：AgentFS 与上下文召回机制",
+    detail: "P0-P3 记忆优先级、Token 阈值、RAG 检索、BGE-Reranker 重排与 Git 快照回滚支撑全过程溯源。",
+  },
+  {
+    module: "决策风控",
+    basis: "方案二：三重校验与高风险阻断",
+    detail: "MARCH 孤立验证拆解原子命题，蒙特卡洛采样要求置信度达标，低可信或不可逆动作转人工审核。",
+  },
+  {
+    module: "迭代管控",
+    basis: "方案一：动态迭代；方案二：PR/CI 联合终审",
+    detail: "新增样本或 F1 下降触发重训，候选模型需经过回归测试、灰度/金丝雀和政企两级终审。",
+  },
+];
+
+const KNOWLEDGE_FILES = [
+  "工矿风险预警智能体合规执行书.md",
+  "部门分级审核SOP.md",
+  "工业物理常识及传感器时间序列逻辑.md",
+  "企业已具备的执行条件.md",
+  "类似事故处理案例.md",
+  "预警历史经验与短期记忆摘要.md",
+];
+
+const API_TABLE = [
+  {
+    group: "健康与文档",
+    path: "GET /health",
+    desc: "后端连通性与版本检查",
+  },
+  {
+    group: "智能体决策",
+    path: "POST /api/v1/agent/decision",
+    desc: "触发完整 LangGraph 决策工作流",
+  },
+  {
+    group: "智能体决策",
+    path: "POST /api/v1/agent/decision/stream",
+    desc: "SSE 推送节点状态、最终决策与拦截结果",
+  },
+  {
+    group: "场景配置",
+    path: "POST /api/v1/agent/scenario/{id}",
+    desc: "切换危化品、冶金、粉尘涉爆场景阈值与知识库子集",
+  },
+  {
+    group: "风险预测",
+    path: "POST /api/v1/prediction/predict",
+    desc: "直接调用风险预测模型与校验器",
+  },
+  {
+    group: "数据管理",
+    path: "POST /api/v1/data/upload",
+    desc: "上传单个 CSV/Excel 企业数据文件",
+  },
+  {
+    group: "数据管理",
+    path: "POST /api/v1/data/upload/batch",
+    desc: "批量上传多份企业数据文件",
+  },
+  {
+    group: "知识库",
+    path: "GET /api/v1/knowledge/list",
+    desc: "查询长期知识库文件列表",
+  },
+  {
+    group: "知识库",
+    path: "GET /api/v1/knowledge/read/{filename}",
+    desc: "读取指定 Markdown 知识文件",
+  },
+  {
+    group: "知识库",
+    path: "POST /api/v1/knowledge/snapshot",
+    desc: "生成 AgentFS 状态快照与 Commit ID",
+  },
+  {
+    group: "迭代管控",
+    path: "GET /api/v1/iteration/status",
+    desc: "查询当前模型迭代与待审批状态",
+  },
+  {
+    group: "迭代管控",
+    path: "POST /api/v1/iteration/trigger",
+    desc: "触发新数据训练、回归测试与候选版本生成",
+  },
+  {
+    group: "迭代管控",
+    path: "POST /api/v1/iteration/approve",
+    desc: "提交模型候选版本审批结论",
+  },
+  {
+    group: "迭代管控",
+    path: "POST /api/v1/iteration/canary",
+    desc: "执行候选模型金丝雀发布检查",
+  },
+  {
+    group: "审计日志",
+    path: "GET /api/v1/audit/query",
+    desc: "按事件类型、企业、风险等级查询运行日志",
+  },
+];
+
+export default function SystemConfigPage({ scenario, health }: Props) {
+  const [latestHealth, setLatestHealth] = useState<HealthResponse | null>(health);
+  const [knowledgeFiles, setKnowledgeFiles] = useState<string[]>(KNOWLEDGE_FILES);
+  const [previewFile, setPreviewFile] = useState<string | null>(null);
+  const [previewContent, setPreviewContent] = useState<string>("");
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [decisionSettings, setDecisionSettings] = useState<DecisionSettingsResponse | null>(null);
+  const [decisionOutputDir, setDecisionOutputDir] = useState("var/decisions");
+  const [decisionPersistEnabled, setDecisionPersistEnabled] = useState(true);
+  const [decisionSettingsStatus, setDecisionSettingsStatus] = useState("");
+
+  useEffect(() => {
+    fetchHealth().then(setLatestHealth);
+    listKnowledge().then((files) => {
+      if (files.length > 0) setKnowledgeFiles(files);
+    });
+    fetchDecisionSettings().then((settings) => {
+      if (!settings) return;
+      setDecisionSettings(settings);
+      setDecisionOutputDir(settings.output_dir);
+      setDecisionPersistEnabled(settings.persist_enabled);
+    });
+  }, []);
+
+  async function saveDecisionSettings() {
+    setDecisionSettingsStatus("正在保存完整决策输出设置...");
+    const updated = await updateDecisionSettings({
+      output_dir: decisionOutputDir,
+      persist_enabled: decisionPersistEnabled,
+    });
+    if (!updated) {
+      setDecisionSettingsStatus("保存失败，请确认后端已启动且目录位于 var 运行时目录下。");
+      return;
+    }
+    setDecisionSettings(updated);
+    setDecisionOutputDir(updated.output_dir);
+    setDecisionPersistEnabled(updated.persist_enabled);
+    setDecisionSettingsStatus("完整决策输出设置已保存。");
+  }
+
+  async function openKnowledgePreview(filename: string) {
+    setPreviewFile(filename);
+    setPreviewLoading(true);
+    setPreviewError(null);
+    setPreviewContent("");
+    const content = await readKnowledge(filename);
+    setPreviewLoading(false);
+    if (content === null) {
+      setPreviewError("无法读取该文件，请确认后端已启动且文件存在。");
+      return;
+    }
+    setPreviewContent(content);
+  }
+
+  function closeKnowledgePreview() {
+    setPreviewFile(null);
+    setPreviewContent("");
+    setPreviewError(null);
+  }
+
+  const cfg = SCENARIO_CONFIG[scenario];
+  const online = latestHealth?.status === "healthy";
+  const scenarioName = SCENARIO_NAMES[scenario];
+  const contractSample = useMemo(
+    () => ({
+      request: {
+        enterprise_id: "CHEM-2024-001",
+        scenario_id: scenario,
+        data: {
+          企业名称: "示例工矿企业",
+          行业监管大类: scenarioName,
+          具体风险描述: "传感器异常、巡检记录与执法记录等原始字段",
+        },
+      },
+      response: {
+        enterprise_id: "CHEM-2024-001",
+        predicted_level: "红 | 橙 | 黄 | 蓝",
+        probability_distribution: {
+          红: 0.82,
+          橙: 0.13,
+          黄: 0.03,
+          蓝: 0.02,
+        },
+        shap_contributions: [
+          { feature: "重大风险数量", contribution: 0.32 },
+          { feature: "文本高危词命中", contribution: 0.21 },
+          { feature: "消防设施完好率", contribution: -0.12 },
+        ],
+        decision_payload: [
+          "风险等级与核心归因",
+          "政府跨部门协同干预建议",
+          "企业设施管控建议",
+        ],
+        guardrails: {
+          march: "合规红线 / 工况逻辑 / 处置可行性",
+          monte_carlo_confidence_threshold: cfg["置信度阈值"],
+          audit: "全流程日志与 AgentFS 快照",
+        },
+      },
+    }),
+    [cfg, scenario, scenarioName],
+  );
+
+  return (
+    <div>
+      <div className="section-title">系统配置与 API 文档</div>
+
+      <div className={`alert ${online ? "success" : "error"}`}>
+        {online
+          ? `FastAPI 后端已连通，当前版本 ${latestHealth?.version ?? "-"}；模型与大模型调用由后端统一调度。`
+          : "后端未连通，前端将以本地 Mock 数据演示；请先启动 FastAPI 服务。"}
+      </div>
+
+      <div className="row cols-4 system-kpi-grid">
+        <div className="scada-card">
+          <div className="scada-card-title">API BASE</div>
+          <div className="system-kpi-value font-mono">{apiBase}</div>
+          <div className="scada-card-sub">同源代理或 VITE_API_BASE</div>
+        </div>
+        <div className="scada-card">
+          <div className="scada-card-title">当前场景</div>
+          <div className="system-kpi-value">{scenarioName}</div>
+          <div className="scada-card-sub">阈值与知识库子集随场景切换</div>
+        </div>
+        <div className="scada-card">
+          <div className="scada-card-title">决策链路</div>
+          <div className="system-kpi-value">6 节点</div>
+          <div className="scada-card-sub">接入、评估、召回、生成、校验、推送</div>
+        </div>
+        <div className="scada-card">
+          <div className="scada-card-title">治理阈值</div>
+          <div className="system-kpi-value font-mono">{String(cfg["置信度阈值"])}</div>
+          <div className="scada-card-sub">蒙特卡洛置信度下限</div>
+        </div>
+      </div>
+
+      <div className="scada-card" style={{ marginTop: 14 }}>
+        <div className="risk-report-header">
+          <div className="scada-card-title">完整决策输出目录</div>
+          <button className="scada-btn secondary" type="button" onClick={saveDecisionSettings}>
+            保存设置
+          </button>
+        </div>
+        <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+          <label className="scada-label" htmlFor="decision-output-dir">
+            服务端相对目录
+          </label>
+          <input
+            id="decision-output-dir"
+            className="scada-input"
+            value={decisionOutputDir}
+            onChange={(e) => setDecisionOutputDir(e.target.value)}
+            placeholder="var/decisions"
+          />
+          <label style={{ display: "flex", gap: 8, alignItems: "center", color: "#9ca3af", fontSize: 12 }}>
+            <input
+              type="checkbox"
+              checked={decisionPersistEnabled}
+              onChange={(e) => setDecisionPersistEnabled(e.target.checked)}
+            />
+            自动保存单次与批量完整决策 JSON
+          </label>
+          <div style={{ color: "#94a3b8", fontSize: 12 }}>
+            解析路径：
+            <span className="font-mono" style={{ color: "#e5e7eb" }}>
+              {decisionSettings?.resolved_path || "等待后端返回"}
+            </span>
+          </div>
+          <div style={{ color: "#94a3b8", fontSize: 12 }}>
+            批量限制：并发 {decisionSettings?.batch_max_concurrency ?? "-"}，单批最多{" "}
+            {decisionSettings?.batch_max_rows ?? "-"} 行。目录必须位于服务端 var 运行时目录下。
+          </div>
+          {decisionSettingsStatus && (
+            <div className={`alert ${decisionSettingsStatus.includes("失败") ? "error" : "success"}`}>
+              {decisionSettingsStatus}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="subtitle">方案映射的系统能力</div>
+      <table className="scada-table">
+        <thead>
+          <tr>
+            <th>模块</th>
+            <th>方案依据</th>
+            <th>页面配置含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          {CAPABILITY_ROWS.map((row) => (
+            <tr key={row.module}>
+              <td>{row.module}</td>
+              <td>{row.basis}</td>
+              <td>{row.detail}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <div className="subtitle">智能体后端工作流</div>
+      <section className="agent-workflow-panel" aria-label="智能体后端工作流">
+        <p className="agent-workflow-intro">
+          LangGraph 编排的六段式决策链路：多源接入 → 风险预测 → 记忆增强 → 结构化生成 → 三重校验 → 审计闭环。
+        </p>
+        <ol className="agent-workflow-grid">
+          {WORKFLOW_NODES.map((node, index) => (
+            <li
+              className={`agent-workflow-step agent-workflow-step--${node.tagColor}`}
+              key={node.name}
+            >
+              <div className="agent-workflow-step-head">
+                <span className="agent-workflow-step-num font-mono" aria-hidden="true">
+                  {String(index + 1).padStart(2, "0")}
+                </span>
+                <h3 className="agent-workflow-step-title">{node.name}</h3>
+              </div>
+              <div className="agent-workflow-step-tags">
+                {node.tags.map((t) => (
+                  <span key={t} className={`tag tag-${node.tagColor}`}>
+                    {t}
+                  </span>
+                ))}
+              </div>
+              <p className="agent-workflow-step-desc">{node.desc}</p>
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      <div className="row cols-2" style={{ marginTop: 12 }}>
+        <div>
+          <div className="subtitle">当前场景配置参数</div>
+          <JsonView data={cfg} maxHeight={220} />
+        </div>
+        <div>
+          <div className="subtitle">核心知识库矩阵</div>
+          <p className="knowledge-matrix-hint">
+            点击文件名可预览 Markdown 内容（需后端在线）。
+          </p>
+          <div className="knowledge-matrix">
+            {knowledgeFiles.map((file) => (
+              <button
+                type="button"
+                key={file}
+                className="knowledge-file"
+                onClick={() => openKnowledgePreview(file)}
+              >
+                <span className="knowledge-file-dot" aria-hidden="true" />
+                <span>{file}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="divider" />
+
+      <div className="subtitle">API 文档入口</div>
+      <div className="doc-link-row">
+        <a className="doc-link" href="/docs" target="_blank" rel="noreferrer">
+          Swagger UI
+        </a>
+        <a className="doc-link" href="/redoc" target="_blank" rel="noreferrer">
+          Redoc
+        </a>
+        <span className="doc-link muted font-mono">GET /health</span>
+      </div>
+
+      <div className="subtitle">接口输入输出契约</div>
+      <JsonView data={contractSample} maxHeight={360} />
+
+      <div className="subtitle" style={{ marginTop: 16 }}>
+        核心接口速查
+      </div>
+      <table className="scada-table">
+        <thead>
+          <tr>
+            <th>分组</th>
+            <th>接口</th>
+            <th>说明</th>
+          </tr>
+        </thead>
+        <tbody>
+          {API_TABLE.map((r) => (
+            <tr key={r.path}>
+              <td>{r.group}</td>
+              <td className="font-mono">{r.path}</td>
+              <td>{r.desc}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <div className="divider" />
+      <div className="subtitle">系统运行信息</div>
+      {previewFile && (
+        <div
+          className="knowledge-preview-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="knowledge-preview-title"
+        >
+          <div className="knowledge-preview-panel">
+            <div className="knowledge-preview-header">
+              <h3 id="knowledge-preview-title" className="knowledge-preview-title">
+                {previewFile}
+              </h3>
+              <button
+                type="button"
+                className="scada-btn secondary"
+                onClick={closeKnowledgePreview}
+              >
+                关闭
+              </button>
+            </div>
+            {previewLoading && (
+              <div className="empty-state">正在加载知识库内容…</div>
+            )}
+            {previewError && (
+              <div className="alert error">{previewError}</div>
+            )}
+            {!previewLoading && !previewError && (
+              <pre className="knowledge-preview-body">{previewContent}</pre>
+            )}
+          </div>
+        </div>
+      )}
+
+      <JsonView
+        data={{
+          backend_status: latestHealth?.status ?? "unknown",
+          version: latestHealth?.version ?? "unknown",
+          api_base: apiBase,
+          frontend: "React + Vite + ECharts (SCADA Theme)",
+          backend: "Python + FastAPI + LangGraph",
+          model_layer: "防泄露 Stacking 风险预警模型",
+          memory_layer: "AgentFS + SQLite + Git + RAG",
+          guardrails: "MARCH 三重校验 + Monte Carlo 高风险阻断",
+          theme: "Industrial Control Room Dark",
+        }}
+      />
+    </div>
+  );
+}

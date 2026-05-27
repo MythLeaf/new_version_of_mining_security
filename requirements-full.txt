@@ -1,0 +1,6 @@
+# 完整 Python 依赖集合
+# 本地研发、模型训练、RAG、测试环境使用。
+
+-r requirements-deploy.txt
+-r requirements-rag.txt
+-r requirements-dev.txt

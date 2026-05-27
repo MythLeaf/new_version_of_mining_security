@@ -1,0 +1,5 @@
+# 后端 API 核心精简依赖（等价于 requirements-serve.txt）
+# Docker 部署真实模型推理默认使用 requirements-deploy.txt；
+# 如需完整训练 / RAG / 旧 Streamlit 前端，请安装 requirements-full.txt。
+
+-r requirements-serve.txt
